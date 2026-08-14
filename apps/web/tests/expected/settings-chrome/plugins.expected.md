@@ -1,4 +1,4 @@
 - listitem:
-  - button "tool-subagent, 已启用":
+  - button "tool-subagent, 扩展系统, 已启用":
     - strong: tool-subagent
-    - text: Model-facing subagent delegation tool over the ctx.subagents seam
+    - text: 扩展系统 已启用 Model-facing subagent delegation tool over the ctx.subagents seam

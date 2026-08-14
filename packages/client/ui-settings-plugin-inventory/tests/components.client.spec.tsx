@@ -55,13 +55,13 @@ function localizedProps(list: PluginInventorySettingsTabInjected['list']) {
 /** A deployment with a roster: one failed global row, two preset-provided rows. */
 const SNAPSHOT = {
   entries: [
-    { entryId: 'telemetry', moduleName: '@fixture/telemetry', enabled: true, fiberPhase: 'failed' },
-    { entryId: 'timer', moduleName: 'cordis:timer', enabled: true, fiberPhase: 'active' },
-    { entryId: '8a1b2c3d', moduleName: '@deepseek-ai/cordis-plugin-hmr', enabled: true, fiberPhase: 'active' },
-    { entryId: 'unobserved', moduleName: '@fixture/unobserved-name', enabled: true, fiberPhase: null },
-    { entryId: 'bash-host', moduleName: '@deepseek-ai/dsh-tool-bash', enabled: false, fiberPhase: null },
-    { entryId: 'fs-host', moduleName: '@deepseek-ai/dsh-tool-fs', enabled: false, fiberPhase: null },
-    { entryId: 'dormant', moduleName: '@fixture/dormant', enabled: false, fiberPhase: null },
+    { entryId: 'telemetry', moduleName: '@fixture/telemetry', enabled: true, fiberPhase: 'failed', category: 'other' },
+    { entryId: 'timer', moduleName: 'cordis:timer', enabled: true, fiberPhase: 'active', category: 'core' },
+    { entryId: '8a1b2c3d', moduleName: '@deepseek-ai/cordis-plugin-hmr', enabled: true, fiberPhase: 'active', category: 'core' },
+    { entryId: 'unobserved', moduleName: '@fixture/unobserved-name', enabled: true, fiberPhase: null, category: 'other' },
+    { entryId: 'bash-host', moduleName: '@deepseek-ai/dsh-tool-bash', enabled: false, fiberPhase: null, category: 'extension' },
+    { entryId: 'fs-host', moduleName: '@deepseek-ai/dsh-tool-fs', enabled: false, fiberPhase: null, category: 'extension' },
+    { entryId: 'dormant', moduleName: '@fixture/dormant', enabled: false, fiberPhase: null, category: 'ui' },
   ],
   agentPresets: [
     {
@@ -454,26 +454,72 @@ describe('PluginInventorySettingsTab', () => {
     // Rows the presets took over sit inline, marked instead of plainly disabled.
     expect(screen.getAllByText(en.presetEnabledTag)).toHaveLength(2)
 
-    fireEvent.click(screen.getByRole('button', { name: 'tool-bash, bash-host, Via presets' }))
+    fireEvent.click(screen.getByRole('button', { name: 'tool-bash, Extended system, bash-host, Enabled via presets' }))
     expect(screen.getByText(en.presetProvidedDetail)).toBeTruthy()
     expect(screen.getByText(en.enabledIn)).toBeTruthy()
     expect(screen.getByText('标准模式 · ptc')).toBeTruthy()
 
     // The failed global card reports its runtime state.
-    fireEvent.click(screen.getByRole('button', { name: 'telemetry, Failed' }))
+    fireEvent.click(screen.getByRole('button', { name: 'telemetry, Other plugins, telemetry, Failed' }))
     expect(screen.getByText('Failed to start')).toBeTruthy()
 
     // An enabled entry with no live fiber says so in its details, dot-free.
-    fireEvent.click(screen.getByRole('button', { name: 'unobserved-name, unobserved, Enabled' }))
+    fireEvent.click(screen.getByRole('button', { name: 'unobserved-name, Other plugins, unobserved, Enabled' }))
     expect(screen.getByText('Not running')).toBeTruthy()
 
     // A disabled row outside every preset stays plainly disabled.
-    fireEvent.click(screen.getByRole('button', { name: 'dormant, Disabled' }))
+    fireEvent.click(screen.getByRole('button', { name: 'dormant, UI interface, dormant, Disabled' }))
     expect(screen.queryByText(en.presetProvidedDetail)).toBeNull()
 
     fireEvent.click(globalToggle())
     expect(globalToggle().getAttribute('aria-expanded')).toBe('false')
     expect(screen.queryByText(en.presetEnabledTag)).toBeNull()
+  })
+
+  it('filters the global plane by category and labels every global card', async () => {
+    const view = await renderReady()
+    fireEvent.click(globalToggle())
+
+    for (const name of [en.all, en.core, en.extension, en.ui, en.other]) {
+      expect(screen.getByRole('button', { name })).toBeTruthy()
+    }
+    expect(screen.getByRole('group', { name: en.categories })).toBeTruthy()
+    expect(screen.getByRole('button', { name: en.all }).getAttribute('aria-pressed')).toBe('true')
+
+    // Every global card carries its category tag; preset rows carry none.
+    expect(screen.getAllByText(en.core)).toHaveLength(3) // one chip + two tags
+    expect(screen.getAllByText(en.extension)).toHaveLength(3) // one chip + two tags
+    expect(screen.getAllByText(en.ui)).toHaveLength(2) // one chip + one tag
+    expect(screen.getAllByText(en.other)).toHaveLength(3) // one chip + two tags
+
+    fireEvent.click(screen.getByRole('button', { name: en.ui }))
+    expect(screen.getByRole('button', { name: en.ui }).getAttribute('aria-pressed')).toBe('true')
+    expect(view.container.querySelectorAll('[data-plugin-scope="global"] li')).toHaveLength(1)
+    expect(screen.getByText('dormant')).toBeTruthy()
+    expect(view.container.querySelector('[data-plugin-scope="global"] [data-plugin-category="ui"]')).toBeTruthy()
+
+    // Category and query filters compose.
+    fireEvent.change(screen.getByRole('searchbox', { name: en.search }), { target: { value: 'timer' } })
+    expect(screen.getByText(en.emptySearch)).toBeTruthy()
+
+    fireEvent.change(screen.getByRole('searchbox', { name: en.search }), { target: { value: '' } })
+    expect(screen.queryByText(en.emptySearch)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: en.core }))
+    expect(view.container.querySelectorAll('[data-plugin-scope="global"] li')).toHaveLength(2)
+    expect(screen.getByText('timer')).toBeTruthy()
+  })
+
+  it('closes an expanded card whose entry leaves the filtered view', async () => {
+    await renderReady()
+    fireEvent.click(globalToggle())
+    const card = screen.getByRole('button', { name: 'dormant, UI interface, dormant, Disabled' })
+    fireEvent.click(card)
+    expect(card.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: en.core }))
+    expect(screen.queryByRole('button', { name: 'dormant, UI interface, dormant, Disabled' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: en.ui }))
+    const restored = screen.getByRole('button', { name: 'dormant, UI interface, dormant, Disabled' })
+    expect(restored.getAttribute('aria-expanded')).toBe('false')
   })
 
   it('switches the inspected preset in place, including broken ones', async () => {
@@ -538,7 +584,7 @@ describe('PluginInventorySettingsTab', () => {
     expect(screen.getByText(en.fromPreset).nextElementSibling?.textContent).toBe('Localized standard')
 
     fireEvent.click(globalToggle())
-    fireEvent.click(screen.getByRole('button', { name: 'tool-bash, bash-host, Via presets' }))
+    fireEvent.click(screen.getByRole('button', { name: 'tool-bash, Extended system, bash-host, Enabled via presets' }))
     expect(screen.getByText('Localized standard · Localized ptc')).toBeTruthy()
   })
 
@@ -548,7 +594,7 @@ describe('PluginInventorySettingsTab', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'ptc' }))
 
     fireEvent.click(globalToggle())
-    fireEvent.click(screen.getByRole('button', { name: 'tool-bash, bash-host, Via presets' }))
+    fireEvent.click(screen.getByRole('button', { name: 'tool-bash, Extended system, bash-host, Enabled via presets' }))
     fireEvent.click(screen.getByRole('button', { name: en.viewInPreset }))
     expect(screen.getByRole('button', { name: en.switcherLabel }).textContent)
       .toBe('标准模式 (default)')
@@ -588,8 +634,8 @@ describe('PluginInventorySettingsTab', () => {
   it('renders a rosterless deployment as one global list, folded until opened', async () => {
     const view = await renderReady({
       entries: [
-        { entryId: 'hmr', moduleName: '@deepseek-ai/cordis-plugin-hmr', enabled: true, fiberPhase: 'active' },
-        { entryId: 'off', moduleName: '@fixture/off', enabled: false, fiberPhase: null },
+        { entryId: 'hmr', moduleName: '@deepseek-ai/cordis-plugin-hmr', enabled: true, fiberPhase: 'active', category: 'core' },
+        { entryId: 'off', moduleName: '@fixture/off', enabled: false, fiberPhase: null, category: 'other' },
       ],
     } as unknown as Snapshot)
 
@@ -600,10 +646,10 @@ describe('PluginInventorySettingsTab', () => {
     expect(globalToggle().getAttribute('aria-expanded')).toBe('true')
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
 
-    fireEvent.click(screen.getByRole('button', { name: 'hmr, Enabled' }))
+    fireEvent.click(screen.getByRole('button', { name: 'hmr, Core system, hmr, Enabled' }))
     expect(screen.getByText(en.runtime)).toBeTruthy()
     expect(view.container.querySelector('[data-loader-entry]')?.textContent).toBe('hmr')
-    fireEvent.click(screen.getByRole('button', { name: 'off, Disabled' }))
+    fireEvent.click(screen.getByRole('button', { name: 'off, Other plugins, off, Disabled' }))
     expect(screen.getAllByText(en.moduleLabel).length).toBeGreaterThan(0)
     expect(screen.queryByText(en.runtime)).toBeNull()
   })

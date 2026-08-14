@@ -42,6 +42,12 @@ export const zh = {
   active: '运行中',
   failed: '启动失败',
   unloading: '卸载中',
+  categories: '插件分类',
+  all: '全部',
+  core: '最小系统',
+  extension: '扩展系统',
+  ui: 'UI界面',
+  other: '其他插件',
 } satisfies Record<string, string>
 
 /** Plugin inventory locale key union. */
@@ -89,4 +95,10 @@ export const en = {
   active: 'Running',
   failed: 'Failed to start',
   unloading: 'Unloading',
+  categories: 'Plugin category',
+  all: 'All',
+  core: 'Core system',
+  extension: 'Extended system',
+  ui: 'UI interface',
+  other: 'Other plugins',
 } satisfies Record<PluginInventoryLocaleKey, string>

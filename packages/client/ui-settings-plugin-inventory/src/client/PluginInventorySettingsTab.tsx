@@ -36,6 +36,12 @@ export interface PluginInventorySettingsTabInjected {
   presetName: (preset: AgentPresetGroup) => string
 }
 type PluginFiberPhase = PluginInventoryEntry['fiberPhase']
+type PluginCategory = PluginInventoryEntry['category']
+
+/** Category filter selections: every bucket plus the unfiltered default. */
+type CategoryFilter = 'all' | PluginCategory
+
+const CATEGORY_FILTERS: readonly CategoryFilter[] = ['all', 'core', 'extension', 'ui', 'other']
 
 /** Full component props assembled by the Settings slot renderer. */
 export type PluginInventorySettingsTabProps =
@@ -85,9 +91,12 @@ function idAddsToTitle(entryId: string | null, title: string): entryId is string
   return entryId !== null && entrySubtitle(entryId) !== title
 }
 
-/** Accessible card name: the title, the complete entry id when the card shows one, then the enablement state. */
-function cardLabel(title: string, entryId: string | null, state: string): string {
-  return idAddsToTitle(entryId, title) ? `${title}, ${entryId}, ${state}` : `${title}, ${state}`
+/** Accessible card name: the title, the declared category when the row carries one, the complete entry id when the card shows one, then the enablement state. */
+function cardLabel(title: string, entryId: string | null, state: string, category?: string): string {
+  const parts = [title, ...(category === undefined ? [] : [category])]
+  if (idAddsToTitle(entryId, title)) parts.push(entryId)
+  parts.push(state)
+  return parts.join(', ')
 }
 
 /** Preserve translated titles and shorten literal package or module name fallbacks in Settings. */
@@ -248,6 +257,11 @@ function StateTag({ kind, label }: { readonly kind: EnablementKind; readonly lab
   return kind === 'enabled' ? null : <Tag tone={TAG_TONES[kind]}>{label}</Tag>
 }
 
+/** Whether an inventory row falls inside the selected category filter. */
+function matchesCategory(entry: PluginInventoryEntry, filter: CategoryFilter): boolean {
+  return filter === 'all' || entry.category === filter
+}
+
 /** Render the read-only plugin inventory: agent presets first, then the global plane. */
 export function PluginInventorySettingsTab(
   { list, presetName, resolveText, t, useClientSync, retryClient }: PluginInventorySettingsTabProps,
@@ -256,6 +270,7 @@ export function PluginInventorySettingsTab(
   const sectionId = useId()
   const [request, setRequest] = useState(0)
   const [query, setQuery] = useState('')
+  const [category, setCategory] = useState<CategoryFilter>('all')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [chosenPreset, setChosenPreset] = useState<string | null>(null)
   const [switcherOpen, setSwitcherOpen] = useState(false)
@@ -300,7 +315,8 @@ export function PluginInventorySettingsTab(
     else regularEntries.push(entry)
   }
 
-  const entryMatch = (entry: PluginInventoryEntry): boolean => matches(entry, normalizedQuery, resolveText)
+  const entryMatch = (entry: PluginInventoryEntry): boolean =>
+    matchesCategory(entry, category) && matches(entry, normalizedQuery, resolveText)
   const rowMatch = (row: AgentPresetRow): boolean => matches(row, normalizedQuery, resolveText)
   const filteredFailed = failedEntries.filter(entryMatch)
   const filteredRegular = regularEntries.filter(entryMatch)
@@ -312,11 +328,24 @@ export function PluginInventorySettingsTab(
   const otherMatchCount = otherPresetMatches
     .reduce((total, preset) => total + preset.rows.filter(rowMatch).length, 0)
 
-  // The preset group starts open and the larger global plane folded; a search opens both for as long as it lasts.
+  // The preset group starts open and the larger global plane folded; a search or category filter opens them for as long as it lasts.
   const presetEffectiveOpen = searching || (presetOpen ?? true)
   const globalEffectiveOpen = searching || (globalOpen ?? false)
-  const nothingMatches = searching && globalCount === 0 && selectedRows.length === 0
+  const nothingMatches = (searching || category !== 'all') && globalCount === 0 && selectedRows.length === 0
     && otherPresetMatches.length === 0
+
+  /** Keys of the cards the current filters keep on screen. */
+  const visibleKeys = useMemo(() => new Set([
+    ...selected === undefined ? [] : selectedRows.map((row, index) => `preset:${selected.id}:${String(index)}`),
+    ...filteredFailed.map(entry => `global:${entry.entryId}`),
+    ...filteredRegular.map(entry => `global:${entry.entryId}`),
+  ]), [selected, selectedRows, filteredFailed, filteredRegular])
+
+  useEffect(() => {
+    if (expanded !== null && !visibleKeys.has(expanded)) {
+      setExpanded(null)
+    }
+  }, [expanded, visibleKeys])
 
   const retry = (): void => {
     setState({ status: 'loading' })
@@ -396,9 +425,12 @@ export function PluginInventorySettingsTab(
         failed={failed}
         expanded={expanded}
         onToggle={toggleRow}
-        ariaLabel={cardLabel(title, entry.entryId, stateText)}
+        ariaLabel={cardLabel(title, entry.entryId, stateText, t(entry.category ?? 'other'))}
         trailing={(
           <>
+            <span className={css.categoryTag} data-plugin-category={entry.category}>
+              {t(entry.category ?? 'other')}
+            </span>
             {entry.enabled && showsPhaseDot(entry.fiberPhase)
               ? <PhaseDot phase={entry.fiberPhase} t={t} />
               : null}
@@ -483,6 +515,20 @@ export function PluginInventorySettingsTab(
               onChange={(event) => { setQuery(event.currentTarget.value) }}
             />
           </label>
+          <div className={css.categories} role="group" aria-label={t('categories')}>
+            {CATEGORY_FILTERS.map(value => (
+              <button
+                className={css.categoryChip}
+                key={value}
+                type="button"
+                data-category-chip={value}
+                aria-pressed={category === value}
+                onClick={() => { setCategory(value) }}
+              >
+                {value === 'all' ? t('all') : t(value)}
+              </button>
+            ))}
+          </div>
           {entries.length === 0 && presets.length === 0 ? <p className={css.status}>{t('empty')}</p> : null}
           {nothingMatches ? <p className={css.status}>{t('emptySearch')}</p> : null}
 
