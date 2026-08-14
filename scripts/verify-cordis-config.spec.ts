@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest'
 import {
   bundleManifestPaths,
   bundlePluginDependencyErrors,
+  categoryMetadataError,
   metadataExpressionErrors,
   packageTestFixtureDependencyErrors,
   packageTestPluginDependencyErrors,
@@ -44,6 +45,26 @@ describe('verify-cordis-config metadata expressions', () => {
       '[0]',
     )
     expect(problems.some(problem => problem.includes('[0].disabled: disabled expression does not parse'))).toBe(true)
+  })
+
+  it('rejects an expression in the category metadata field', () => {
+    const problems = metadataExpressionErrors(
+      { id: 'row', name: 'pkg', category: { __jsExpr: 'process.platform' } },
+      '[0]',
+    )
+    expect(problems).toContain('[0].category: !!js is not interpolated here')
+  })
+
+  it('accepts every shipped category value and rejects misspelled or mistyped ones', () => {
+    for (const value of ['core', 'extension', 'ui', 'other']) {
+      expect(categoryMetadataError({ id: 'row', name: 'pkg', category: value }, '[0]')).toBeUndefined()
+    }
+    expect(categoryMetadataError({ id: 'row', name: 'pkg', category: null }, '[0]')).toBeUndefined()
+    expect(categoryMetadataError({ id: 'row', name: 'pkg' }, '[0]')).toBeUndefined()
+    expect(categoryMetadataError({ id: 'row', name: 'pkg', category: 'extended' }, '[0]'))
+      .toBe('[0].category: must be one of core, extension, ui, other')
+    expect(categoryMetadataError({ id: 'row', name: 'pkg', category: 1 }, '[0]'))
+      .toBe('[0].category: must be one of core, extension, ui, other')
   })
 })
 

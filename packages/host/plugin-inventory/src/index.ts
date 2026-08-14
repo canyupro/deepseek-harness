@@ -10,6 +10,7 @@ import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from 'zod'
 import type {
   AgentPresetPluginGroup,
+  PluginCategory,
   PluginEntryId,
   PluginFiberPhase,
   PluginInventoryEntry,
@@ -25,6 +26,27 @@ export type * from './types.ts'
  */
 export function pluginEntryId(value: string): PluginEntryId {
   return value as PluginEntryId
+}
+
+/** Every Loader row value the projection classifies, mapped to its category. */
+const CATEGORY_VALUES: Readonly<Record<PluginCategory, true>> = {
+  core: true,
+  extension: true,
+  ui: true,
+  other: true,
+}
+
+/**
+ * Project a row's static `category` metadata. Unknown or absent values land
+ * in `other` — the fallback bucket is the field's declared semantics, not a
+ * skipped configuration error, and the `verify-cordis-config` gate rejects
+ * misspelled values in shipped compositions before they boot.
+ */
+function entryCategory(value: string | null | undefined): PluginCategory {
+  if (value !== null && value !== undefined && value in CATEGORY_VALUES) {
+    return value as PluginCategory
+  }
+  return 'other'
 }
 
 /** Runtime mirror: FiberState is a cross-package const enum. */
@@ -91,6 +113,7 @@ export async function readPluginInventory(ctx: Context): Promise<PluginInventory
       moduleName: entry.options.name,
       enabled: !entry.disabled,
       fiberPhase: entry.fiber === undefined ? null : FIBER_PHASE[entry.fiber.state],
+      category: entryCategory(entry.options.category),
       ...meta === undefined ? {} : { meta },
     })
   }

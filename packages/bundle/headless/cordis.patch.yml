@@ -19,10 +19,12 @@
 
 - insert:
     - id: headless-startup
+      category: core
       name: '@deepseek-ai/dsh-headless/startup'
 
     # Reads its task and run options from the ordinary headlessStartup provider.
     - id: headless-runner
+      category: core
       name: '@deepseek-ai/dsh-headless'
       inject: [headlessStartup]
       config:

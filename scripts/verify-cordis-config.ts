@@ -38,7 +38,10 @@ const root = resolve(import.meta.dirname, '..')
 const appOverlayFiles = new Set([
   ...globSync('apps/cli/config/examples/**/*.yml', { cwd: root }),
 ])
-const metadataFields = ['id', 'name', 'group', 'inject', 'intercept', 'isolate'] as const
+const metadataFields = ['id', 'name', 'group', 'inject', 'intercept', 'isolate', 'category'] as const
+
+/** Loader row values the plugin-inventory projection classifies. */
+const CATEGORY_VALUES = new Set(['core', 'extension', 'ui', 'other'])
 
 /** The adaptive directory-picker chooser package (mounts a backend row at boot). */
 const CHOOSER_PACKAGE = '@deepseek-ai/dsh-host-directory-picker-auto'
@@ -503,6 +506,24 @@ function validateMetadata(entry: Record<string, unknown>, file: string, path: st
   for (const problem of metadataExpressionErrors(entry, path)) {
     errors.push(`${file}${problem}`)
   }
+  const categoryProblem = categoryMetadataError(entry, path)
+  if (categoryProblem !== undefined) errors.push(`${file}${categoryProblem}`)
+}
+
+/**
+ * A `category` outside the projection's known set would silently fall into
+ * the `other` bucket at runtime, so a misspelled or mistyped value in a
+ * shipped composition fails here instead of degrading its classification.
+ * @param entry - one loader entry (or patch row).
+ * @param path - the entry's diagnostic path prefix.
+ * @returns the diagnostic, or `undefined` when the field is valid or absent.
+ */
+export function categoryMetadataError(entry: Record<string, unknown>, path: string): string | undefined {
+  if (!('category' in entry) || entry.category === null) return undefined
+  if (typeof entry.category !== 'string' || !CATEGORY_VALUES.has(entry.category)) {
+    return `${path}.category: must be one of ${[...CATEGORY_VALUES].join(', ')}`
+  }
+  return undefined
 }
 
 /**

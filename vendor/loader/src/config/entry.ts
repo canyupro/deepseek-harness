@@ -20,6 +20,8 @@ export interface EntryOptions {
   disabled?: boolean | null
   /** Required services or service intercept config for this entry. */
   inject?: Inject | null
+  /** Consumer-defined classification carried through patches and config dumps. */
+  category?: string | null
 }
 
 function takeEntries(object: {}, keys: string[]) {

@@ -169,18 +169,21 @@ describe('PluginInventoryGateway', () => {
         moduleName: 'cordis:active',
         enabled: true,
         fiberPhase: 'active',
+        category: 'other',
       },
       {
         entryId: pendingId,
         moduleName: 'cordis:pending',
         enabled: true,
         fiberPhase: 'pending',
+        category: 'other',
       },
       {
         entryId: disabledId,
         moduleName: 'cordis:not-installed',
         enabled: false,
         fiberPhase: null,
+        category: 'other',
       },
     ]))
 
@@ -190,6 +193,7 @@ describe('PluginInventoryGateway', () => {
       moduleName: 'cordis:active',
       enabled: false,
       fiberPhase: null,
+      category: 'other',
     })
 
     ctx.loader.remove(pendingId)
@@ -226,5 +230,19 @@ describe('PluginInventoryGateway', () => {
       },
       { id: 'damaged', isDefault: false, broken: 'the composition file is missing', rows: [] },
     ])
+  })
+
+  it('classifies a row category and falls unknown values back to other', async () => {
+    const { ctx, inventory } = await harness()
+    const coreId = await ctx.loader.create({ name: 'cordis:active', category: 'core' })
+    const uiId = await ctx.loader.create({ name: 'cordis:active', category: 'ui' })
+    const unknownId = await ctx.loader.create({ name: 'cordis:pending', category: 'misspelled' })
+
+    const snapshot = inventory.list()
+    expect(snapshot.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ entryId: coreId, category: 'core' }),
+      expect.objectContaining({ entryId: uiId, category: 'ui' }),
+      expect.objectContaining({ entryId: unknownId, category: 'other' }),
+    ]))
   })
 })

@@ -13,6 +13,16 @@ export type PluginFiberPhase =
   | 'unloading'
   | null
 
+/**
+ * Product-level plugin classification shown by the Web plugin list.
+ *
+ * The value is declared per Loader row as static `category` metadata
+ * (`core` | `extension` | `ui` | `other`); a row without a recognized
+ * category projects as `other`, which is the bucket's purpose — it holds
+ * everything a composition does not explicitly classify.
+ */
+export type PluginCategory = 'core' | 'extension' | 'ui' | 'other'
+
 /** One non-group Loader entry exposed to trusted clients. */
 export interface PluginInventoryEntry {
   readonly entryId: PluginEntryId
@@ -23,6 +33,8 @@ export interface PluginInventoryEntry {
   /** Effective Loader enablement, including disabled ancestor groups. */
   readonly enabled: boolean
   readonly fiberPhase: PluginFiberPhase
+  /** Declared row classification; unrecognized or absent values project as `other`. */
+  readonly category: PluginCategory
 }
 
 /** Effective enablement of one preset composition row. */

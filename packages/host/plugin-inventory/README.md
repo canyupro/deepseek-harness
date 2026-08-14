@@ -9,7 +9,11 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Clients can call `pluginInventory/list` to display the host’s current plugins in load order, including each entry’s identifier, module specifier, effective enablement, live phase, and available display text. Deployments with an agent-preset roster also report each preset’s metadata, health, and flattened plugin composition; without a roster, preset data is absent. Each response is a point-in-time, read-only snapshot for display and diagnostics: it cannot mutate plugins and provides no history or change subscription.
+<<<<<<< HEAD
+Clients can call `pluginInventory/list` to display the host’s current plugins in load order, including each entry’s identifier, module specifier, effective enablement, live phase, available display text, and declared category — projected from the entry’s static `category` metadata (`core`, `extension`, `ui`, `other`), with an absent or unrecognized value landing in `other`. Deployments with an agent-preset roster also report each preset’s metadata, health, and flattened plugin composition; without a roster, preset data is absent. Each response is a point-in-time, read-only snapshot for display and diagnostics: it cannot mutate plugins and provides no history or change subscription.
+=======
+Clients can call `pluginInventory/list` to display the host’s current plugins in load order, including each entry’s identifier, module specifier, effective enablement, live phase, and declared category — projected from the entry’s static `category` metadata (`core`, `extension`, `ui`, `other`), with an absent or unrecognized value landing in `other`. Deployments with an agent-preset roster also report each preset’s metadata, health, and flattened plugin composition; without a roster, preset data is absent. Each response is a point-in-time, read-only snapshot for display and diagnostics: it cannot mutate plugins and provides no history, provenance, or change subscription.
+>>>>>>> b744df36d9 (feat(loader): classify plugin rows with a category metadata field)
 
 ## Table of Contents
 
@@ -29,7 +33,7 @@ Call `pluginInventory/list` when a client or settings page needs to show what is
 
 ### What a snapshot contains
 
-Each row is one non-group Loader entry: its entry id, the exact module specifier, the effective enablement (including disabled ancestor groups), and the current root Fiber phase. `pending` means the entry waits to load, `loading` that it is being read, `active` that it is running, `failed` that its fiber rejected, and `unloading` that it is being torn down; `null` means no live root Fiber exists at all. Structural group rows are skipped.
+Each row is one non-group Loader entry: its entry id, the exact module specifier, the effective enablement (including disabled ancestor groups), the current root Fiber phase, and the row's declared category — projected from the entry's static `category` metadata (`core`, `extension`, `ui`, `other`), with an absent or unrecognized value landing in `other`. `pending` means the entry waits to load, `loading` that it is being read, `active` that it is running, `failed` that its fiber rejected, and `unloading` that it is being torn down; `null` means no live root Fiber exists at all. Structural group rows are skipped.
 
 Loader and preset rows can carry optional `meta` with a title, description, or metadata diagnostic. The Host returns available translations and literal fallbacks; the Client selects its language. Metadata diagnostics do not change enablement or fiber phase.
 
@@ -64,7 +68,7 @@ Fiber states map onto the public phase vocabulary, with `disposed` folding into 
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | `PluginInventoryGateway`: the `pluginInventory` Remote service and the Loader projection |
-| [`src/types.ts`](src/types.ts) | Public payload types: `PluginInventoryEntry`, `PluginInventorySnapshot`, `PluginFiberPhase` |
+| [`src/types.ts`](src/types.ts) | Public payload types: `PluginInventoryEntry`, `PluginInventorySnapshot`, `PluginFiberPhase`, `PluginCategory` |
 | — | No runtime invariant companion is published; every snapshot is projected directly from Loader-owned state. |
 
 Typert generates the Host and Client Remote artifacts exposed by `./typert` and `./remote`.
