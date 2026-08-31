@@ -238,7 +238,7 @@ describe('PluginInventoryGateway', () => {
     const uiId = await ctx.loader.create({ name: 'cordis:active', category: 'ui' })
     const unknownId = await ctx.loader.create({ name: 'cordis:pending', category: 'misspelled' })
 
-    const snapshot = inventory.list()
+    const snapshot = await inventory.list()
     expect(snapshot.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ entryId: coreId, category: 'core' }),
       expect.objectContaining({ entryId: uiId, category: 'ui' }),
