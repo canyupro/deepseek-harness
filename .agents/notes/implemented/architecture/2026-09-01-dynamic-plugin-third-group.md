@@ -6,7 +6,7 @@ English | [中文](2026-09-01-dynamic-plugin-third-group.zh.md)
 
 ## Problem
 
-The Settings → Plugin list projects the non-group Loader entries and, since [the agent-preset scopes change](2026-08-29-plugin-inventory-agent-preset-scopes.md), every roster preset's composition — but a user-defined dynamic Cordis plugin appeared nowhere. Those plugins mount as ad-hoc fibers under the dynamic runner's own group instead of Loader entries, and no preset declares them, so the list read as "everything composed" while silently omitting a whole plane: a user who defined a prompt-enhance or usage-stats plugin in-session could not see it, its versions, its owning session, or whether it was running.
+The Settings → Plugin list projects the non-group Loader entries and, since [the agent-preset scopes change](../../archived/architecture/2026-08-29-plugin-inventory-agent-preset-scopes.md), every roster preset's composition — but a user-defined dynamic Cordis plugin appeared nowhere. Those plugins mount as ad-hoc fibers under the dynamic runner's own group instead of Loader entries, and no preset declares them, so the list read as "everything composed" while silently omitting a whole plane: a user who defined a prompt-enhance or usage-stats plugin in-session could not see it, its versions, its owning session, or whether it was running.
 
 ## Decision
 

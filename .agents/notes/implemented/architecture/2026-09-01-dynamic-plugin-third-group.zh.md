@@ -6,7 +6,7 @@ Status: implemented
 
 ## 问题
 
-设置 → 插件列表投影非组 Loader 条目，并自[Agent 预设作用域变更](2026-08-29-plugin-inventory-agent-preset-scopes.zh.md)起携带每个 roster 预设的组合——但用户自定义的动态 Cordis 插件无处可见。这些插件以动态 runner 自身分组下的临时 fiber 挂载，而不是 Loader 条目，也没有任何预设声明它们，因此列表读作“已组合的全部”，却静默省略了一整个平面：在会话内定义过提示词增强或用量统计插件的用户看不到它、它的版本、所属会话，或它是否在运行。
+设置 → 插件列表投影非组 Loader 条目，并自[Agent 预设作用域变更](../../archived/architecture/2026-08-29-plugin-inventory-agent-preset-scopes.md)起携带每个 roster 预设的组合——但用户自定义的动态 Cordis 插件无处可见。这些插件以动态 runner 自身分组下的临时 fiber 挂载，而不是 Loader 条目，也没有任何预设声明它们，因此列表读作“已组合的全部”，却静默省略了一整个平面：在会话内定义过提示词增强或用量统计插件的用户看不到它、它的版本、所属会话，或它是否在运行。
 
 ## 决策
 
