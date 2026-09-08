@@ -16,7 +16,7 @@ Web 插件列表把每个 Loader 条目放在一个扁平、可搜索的目录�
 - `PluginInventoryEntry.category` 是封闭联合类型 `core | extension | ui | other`（`PluginCategory`）。清单网关投影原始行值；缺失、`null` 或无法识别的值投影为 `other`——回退桶正是该字段的契约，而不是被跳过的错误。
 - 发布组合在每个非 group 行上声明该值：`core` 是启动/会话/模型/Agent 主干加护栏与存储；`extension` 是能力 seam（shell、fs、web、skill、subagent、workflow、compaction）与标准 Agent 体验插件（todo、plan、goal、commands）；`ui` 是浏览器插件（`dsh-client-ui-*` 与其他仅 UI 的客户端包），浏览器传输（`connection`、`client-runtime`、`locale`、`modules`）计入 `core`；`other` 收纳辅助行（遥测、消息反馈）。以基础行为目标的补丁行不重复声明该字段——补丁会保留它。
 - `scripts/verify-cordis-config.ts` 把 `category` 加入静态元数据字段（禁止 `!!js`），并拒绝四桶集合之外的值，因此发布组合里拼错的值会在 gate 阶段失败，而不是悄悄退化成 `other`。
-- UI 在目录上方新增单选 chip 行（全部加四个桶），与搜索查询叠加生效，并在每张卡片上显示分类标签。选择只属于视图：组件重新挂载时回到“全部”，不做设置持久化。所扩展的标签页结构是 [`settings.plugins.tab` ledger](2026-08-11-plugin-settings-tabs.md)。
+- UI 在目录上方新增单选 chip 行（全部加四个桶），与搜索查询叠加生效，并在每张卡片上显示分类标签。选择只属于视图：组件重新挂载时回到“全部”，不做设置持久化。所扩展的标签页结构是 [已归档的 `settings.plugins.tab` ledger](../../archived/architecture/2026-08-11-plugin-settings-tabs.md)。
 
 ## Alternatives considered
 

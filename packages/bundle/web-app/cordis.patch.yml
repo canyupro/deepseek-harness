@@ -149,6 +149,10 @@
 
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
+      config:
+        # Persist the personal plugin library under the resolved DSH home so
+        # saved plugins survive restarts and auto-mount at boot.
+        libraryHome: !!js ctx.dshHomePath()
 
     # The Host inspect providers are process-global: the registry rejects a
     # duplicate id, so they register here once and every preset's `tool-cordis`

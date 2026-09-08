@@ -24,6 +24,9 @@
       "path": "../../preset/agent-preset-registry"
     },
     {
+      "path": "../../extensions/cordis-host-runner"
+    },
+    {
       "path": "../../util/brand"
     },
     {

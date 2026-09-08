@@ -27,6 +27,7 @@ function props(
   list: PluginInventorySettingsTabInjected['list'],
   presetName: PluginInventorySettingsTabInjected['presetName'] = preset => preset.name ?? preset.id,
   resolveText: PluginInventorySettingsTabInjected['resolveText'] = text => typeof text === 'string' ? text : text.en,
+  overrides: Partial<Pick<PluginInventorySettingsTabProps, 'useSessions' | 'saveToLibrary' | 'setLibraryState' | 'removeFromLibrary'>> = {},
 ): PluginInventorySettingsTabProps {
   return {
     t,
@@ -35,6 +36,11 @@ function props(
     resolveText,
     useClientSync: bindSnapshotSelector(createSnapshotStore<ClientEntryState>({ syncing: false, failures: [] })),
     retryClient: vi.fn(),
+    useSessions: () => 'session-a',
+    saveToLibrary: vi.fn(async () => ({ ok: true as const })),
+    setLibraryState: vi.fn(async () => ({ ok: true as const })),
+    removeFromLibrary: vi.fn(async () => ({ ok: true as const, wasRunning: false })),
+    ...overrides,
   } as PluginInventorySettingsTabProps
 }
 
@@ -96,8 +102,11 @@ const SNAPSHOT = {
   ],
 } as unknown as Snapshot
 
-async function renderReady(snapshot: Snapshot = SNAPSHOT): Promise<ReturnType<typeof render>> {
-  const view = render(<PluginInventorySettingsTab {...props(async () => snapshot)} />)
+async function renderReady(
+  snapshot: Snapshot = SNAPSHOT,
+  overrides: Partial<Pick<PluginInventorySettingsTabProps, 'useSessions' | 'saveToLibrary' | 'setLibraryState' | 'removeFromLibrary'>> = {},
+): Promise<ReturnType<typeof render>> {
+  const view = render(<PluginInventorySettingsTab {...props(async () => snapshot, preset => preset.name ?? preset.id, overrides)} />)
   await screen.findByRole('searchbox', { name: en.search })
   return view
 }
@@ -699,6 +708,106 @@ describe('PluginInventorySettingsTab', () => {
     const pendingFailure = render(<PluginInventorySettingsTab {...props(() => deferredFailure.promise)} />)
     pendingFailure.unmount()
     await act(async () => { deferredFailure.reject(new Error('late failure')) })
+  })
+
+  it('renders user-defined dynamic plugins as a third collapsible group', async () => {
+    const view = await renderReady({
+      entries: [],
+      agentPresets: [],
+      dynamic: [
+        {
+          pluginId: 'enpr-1',
+          name: 'prompt-enhance',
+          purpose: 'Enhance prompts',
+          sessionId: 'session-a',
+          packageCount: 3,
+          currentPackageId: 'pkg-3',
+          phase: 'running',
+        },
+        {
+          pluginId: 'tust-2',
+          name: 'usage-stats',
+          purpose: '',
+          sessionId: 'session-a',
+          packageCount: 1,
+          phase: 'stopped',
+        },
+      ],
+    } as unknown as Snapshot)
+
+    const toggle = screen.getByRole('button', { name: (name: string) => name.startsWith(en.dynamicTitle) })
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(view.container.querySelector('[data-dynamic-count]')?.getAttribute('data-dynamic-count')).toBe('2')
+
+    expect(screen.getByText(en.active)).toBeTruthy()
+    expect(screen.getByText(en.stoppedTag)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: `prompt-enhance, ${en.active}` }))
+    expect(screen.getByText(en.dynamicSession).nextElementSibling?.textContent).toBe('session-a')
+    expect(screen.getByText(en.dynamicVersions).nextElementSibling?.textContent).toBe('3')
+    expect(screen.getByText(en.dynamicCurrent).nextElementSibling?.textContent).toBe('pkg-3')
+    expect(screen.getByText(en.dynamicPurpose).nextElementSibling?.textContent).toBe('Enhance prompts')
+
+    fireEvent.change(screen.getByRole('searchbox', { name: en.search }), { target: { value: 'usage-stats' } })
+    expect(screen.queryByRole('button', { name: `prompt-enhance, ${en.active}` })).toBeNull()
+    expect(screen.getByRole('button', { name: `usage-stats, ${en.stoppedTag}` })).toBeTruthy()
+
+    fireEvent.change(screen.getByRole('searchbox', { name: en.search }), { target: { value: '' } })
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('manages the personal plugin library through per-state actions', async () => {
+    const saveToLibrary = vi.fn(async () => ({ ok: true as const }))
+    const setLibraryState = vi.fn(async () => ({ ok: true as const }))
+    const removeFromLibrary = vi.fn(async () => ({ ok: true as const, wasRunning: false }))
+    const snapshot = {
+      entries: [],
+      agentPresets: [],
+      dynamic: [
+        { pluginId: 'free', name: 'free-plug', purpose: '', sessionId: 's', packageCount: 1, phase: 'running' },
+        { pluginId: 'lib-off', name: 'off-plug', purpose: '', sessionId: 's', packageCount: 1, phase: 'stopped', libraryState: 'off' },
+        { pluginId: 'lib-edit', name: 'edit-plug', purpose: '', sessionId: 's', packageCount: 2, phase: 'running', libraryState: 'on-editable' },
+        { pluginId: 'lib-frozen', name: 'frozen-plug', purpose: '', sessionId: 's', packageCount: 1, phase: 'running', libraryState: 'frozen' },
+      ],
+    } as unknown as Snapshot
+    await renderReady(snapshot, { saveToLibrary, setLibraryState, removeFromLibrary })
+
+    // Action buttons live in the expanded card details; only one card is open
+    // at a time, so expand each card, act on it, then move to the next.
+    fireEvent.click(screen.getByRole('button', { name: `free-plug, ${en.active}` }))
+    fireEvent.click(screen.getByRole('button', { name: en.libSaveOn }))
+    expect(saveToLibrary).toHaveBeenCalledWith('session-a', 'free', 'on-editable')
+    fireEvent.click(screen.getByRole('button', { name: en.libSaveOff }))
+    expect(saveToLibrary).toHaveBeenCalledWith('session-a', 'free', 'off')
+
+    fireEvent.click(screen.getByRole('button', { name: `off-plug, ${en.stoppedTag}` }))
+    fireEvent.click(screen.getByRole('button', { name: en.libEnable }))
+    expect(setLibraryState).toHaveBeenCalledWith('session-a', 'lib-off', 'on-editable')
+
+    fireEvent.click(screen.getByRole('button', { name: `edit-plug, ${en.active}` }))
+    fireEvent.click(screen.getByRole('button', { name: en.libFreeze }))
+    expect(setLibraryState).toHaveBeenCalledWith('session-a', 'lib-edit', 'frozen')
+    fireEvent.click(screen.getByRole('button', { name: en.libDisable }))
+    expect(setLibraryState).toHaveBeenCalledWith('session-a', 'lib-edit', 'off')
+
+    fireEvent.click(screen.getByRole('button', { name: `frozen-plug, ${en.active}` }))
+    fireEvent.click(screen.getByRole('button', { name: en.libUnfreeze }))
+    expect(setLibraryState).toHaveBeenCalledWith('session-a', 'lib-frozen', 'on-editable')
+
+    // Removing calls the library verb for the currently open card.
+    fireEvent.click(screen.getByRole('button', { name: en.libRemove }))
+    expect(removeFromLibrary).toHaveBeenCalledWith('session-a', 'lib-frozen')
+  })
+
+  it('keeps the user-defined group visible with an empty hint when no plugin exists', async () => {
+    await renderReady({ entries: [], agentPresets: [] } as unknown as Snapshot)
+
+    const toggle = screen.getByRole('button', { name: (name: string) => name.startsWith(en.dynamicTitle) })
+    expect(toggle).toBeTruthy()
+    expect(screen.getByText(en.dynamicEmpty)).toBeTruthy()
+    fireEvent.click(toggle)
+    expect(screen.queryByText(en.dynamicEmpty)).toBeNull()
   })
 })
 

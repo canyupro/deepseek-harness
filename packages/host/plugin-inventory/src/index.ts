@@ -5,11 +5,17 @@ import type {} from '@deepseek-ai/cordis-plugin-loader'
 // Type-only: the optional agent-preset roster resolved through `ctx.get`.
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-app-boot'
+// Type-only: the optional dynamic runner resolved through `ctx.get`, and its
+// inventory row vocabulary projected into this package's own snapshot types.
+import type {} from '@deepseek-ai/dsh-cordis-host-runner'
+import type { DynamicCordisInventoryRow } from '@deepseek-ai/dsh-cordis-host-runner/types'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 // Typert-generated ./typert and ./remote artifacts import Zod at runtime.
 import type {} from 'zod'
 import type {
   AgentPresetPluginGroup,
+  DynamicPluginEntry,
+  DynamicPluginPhase,
   PluginCategory,
   PluginEntryId,
   PluginFiberPhase,
@@ -49,6 +55,38 @@ function entryCategory(value: string | null | undefined): PluginCategory {
   return 'other'
 }
 
+/**
+ * Lifecycle phase for one dynamic runner row. An active run wins; a stopped
+ * plugin with a rejected, failed, or cancelled latest attempt reports that
+ * failure, and the remaining transition statuses fold into `in-flight`.
+ */
+function dynamicPhase(row: DynamicCordisInventoryRow): DynamicPluginPhase {
+  if (row.activeRun !== undefined) {
+    return row.latestRun?.status === 'waiting' ? 'waiting' : 'running'
+  }
+  const status = row.latestRun?.status
+  if (status === 'awaiting-approval' || status === 'starting-host' || status === 'client-pending') {
+    return 'in-flight'
+  }
+  if (status === 'failed' || status === 'rejected' || status === 'cancelled') return 'failed'
+  return 'stopped'
+}
+
+/** Project one runner row into this package's source-free vocabulary. */
+function dynamicEntry(row: DynamicCordisInventoryRow): DynamicPluginEntry {
+  const latest = row.packages[row.packages.length - 1]
+  return {
+    pluginId: row.pluginId,
+    name: latest?.name ?? row.pluginId,
+    purpose: latest?.purpose ?? '',
+    sessionId: row.agentId,
+    packageCount: row.packages.length,
+    ...row.currentPackageId === undefined ? {} : { currentPackageId: row.currentPackageId },
+    phase: dynamicPhase(row),
+    ...row.libraryState === undefined ? {} : { libraryState: row.libraryState },
+  }
+}
+
 /** Runtime mirror: FiberState is a cross-package const enum. */
 const FIBER_STATE = {
   PENDING: 0 as FiberState.PENDING,
@@ -85,9 +123,10 @@ export class PluginInventoryGateway extends TypertRemoteService {
    * When an agent-preset roster is composed, the snapshot also carries each
    * preset's composition rows, because those rows — not the Loader's own
    * entries — are where a deployment that mounts the roster runs its
-   * model-facing plugins.
-   * @returns Current non-group Loader entries in Loader order, with optional display metadata
-   * and per-preset compositions when a roster is composed.
+   * model-facing plugins. When the dynamic runner is mounted, the snapshot
+   * also carries its process-local plugins as a third, source-free group.
+   * @returns Current non-group Loader entries in Loader order, with optional display metadata,
+   * per-preset compositions, and dynamic plugins when their services are mounted.
    */
   @Remote('list')
   async list(): Promise<PluginInventorySnapshot> {
@@ -119,7 +158,9 @@ export async function readPluginInventory(ctx: Context): Promise<PluginInventory
   }
   const presets = ctx.get('agentPresets')
   const management = ctx.get('pluginManager') === undefined ? {} : { managementAvailable: true }
-  if (presets === undefined) return { entries, ...management }
+  const dynamicRow = ctx.get('dynamicCordisRunner')?.inventory().map(row => dynamicEntry(row))
+  const dynamic = dynamicRow === undefined ? {} : { dynamic: dynamicRow }
+  if (presets === undefined) return { entries, ...dynamic, ...management }
   const agentPresets: AgentPresetPluginGroup[] = (await presets.compositionInventory()).map(
     composition => ({
       ...composition,
@@ -133,5 +174,5 @@ export async function readPluginInventory(ctx: Context): Promise<PluginInventory
       }),
     }),
   )
-  return { entries, agentPresets, ...management }
+  return { entries, agentPresets, ...dynamic, ...management }
 }

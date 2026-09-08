@@ -3,6 +3,9 @@ import type { ClientEntryState } from '@deepseek-ai/dsh-client-modules/client'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { PluginInventorySnapshot } from '@deepseek-ai/dsh-api-remotes/client'
 import type { LocalizedText } from '@deepseek-ai/dsh-package-manifest'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+// Type-only: pulls the GlobalStandardProps merge that supplies `useSessions`.
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import {
   IconChevronDownOutlineRegular,
   IconSearchOutlineRegular,
@@ -18,6 +21,15 @@ import css from './PluginInventorySettingsTab.module.css'
 type PluginInventoryEntry = PluginInventorySnapshot['entries'][number]
 type AgentPresetGroup = NonNullable<PluginInventorySnapshot['agentPresets']>[number]
 type AgentPresetRow = AgentPresetGroup['rows'][number]
+type DynamicPluginRow = NonNullable<PluginInventorySnapshot['dynamic']>[number]
+type DynamicPluginLibraryState = NonNullable<DynamicPluginRow['libraryState']>
+
+/** Locale keys for the personal-library lifecycle states. */
+const LIBRARY_STATE_KEYS = {
+  off: 'libStateOff',
+  'on-editable': 'libStateEditable',
+  frozen: 'libStateFrozen',
+} satisfies Record<DynamicPluginLibraryState, PluginInventoryLocaleKey>
 
 /** Registration-side Remote face used by the section. */
 export interface PluginInventorySettingsTabInjected {
@@ -34,6 +46,18 @@ export interface PluginInventorySettingsTabInjected {
    * agent-preset dictionaries, user-authored ones keep their own metadata.
    */
   presetName: (preset: AgentPresetGroup) => string
+  /** Persist one session-owned plugin into the personal plugin library. */
+  saveToLibrary: (
+    sessionId: SessionId, pluginId: string, state: DynamicPluginLibraryState,
+  ) => Promise<{ ok: true } | { ok: false; reason: string; message: string }>
+  /** Transition one library plugin to another library state. */
+  setLibraryState: (
+    sessionId: SessionId, pluginId: string, state: DynamicPluginLibraryState,
+  ) => Promise<{ ok: true } | { ok: false; reason: string; message: string }>
+  /** Remove one library plugin and all of its versions. */
+  removeFromLibrary: (
+    sessionId: SessionId, pluginId: string,
+  ) => Promise<{ ok: true; wasRunning: boolean } | { ok: false; reason: string; message: string }>
 }
 type PluginFiberPhase = PluginInventoryEntry['fiberPhase']
 type PluginCategory = PluginInventoryEntry['category']
@@ -188,8 +212,8 @@ function PluginCard({
 
 /** Detail rows shared by every card: the Loader identity, then labeled facts. */
 function CardFacts({ moduleName, moduleLabel, entryId, facts }: {
-  readonly moduleName: string
-  readonly moduleLabel: string
+  readonly moduleName?: string
+  readonly moduleLabel?: string
   readonly entryId: string | null
   readonly facts: readonly (readonly [label: string, value: ReactNode])[]
 }): ReactNode {
@@ -197,10 +221,12 @@ function CardFacts({ moduleName, moduleLabel, entryId, facts }: {
     <>
       {entryId === null ? null : <code className={css.entryValue} data-loader-entry>{entryId}</code>}
       <dl className={css.details}>
-        <div>
-          <dt>{moduleLabel}</dt>
-          <dd>{moduleName}</dd>
-        </div>
+        {moduleName === undefined || moduleLabel === undefined ? null : (
+          <div>
+            <dt>{moduleLabel}</dt>
+            <dd>{moduleName}</dd>
+          </div>
+        )}
         {facts.map(([label, value]) => (
           <div key={label}>
             <dt>{label}</dt>
@@ -257,15 +283,27 @@ function StateTag({ kind, label }: { readonly kind: EnablementKind; readonly lab
   return kind === 'enabled' ? null : <Tag tone={TAG_TONES[kind]}>{label}</Tag>
 }
 
+/** Palette kind and localized label for one dynamic plugin phase. */
+function dynamicPhaseTag(phase: DynamicPluginRow['phase'], t: Translate): [kind: string, label: string] {
+  switch (phase) {
+    case 'running': return ['running', t('active')]
+    case 'waiting': return ['waiting', t('pending')]
+    case 'in-flight': return ['inflight', t('inFlightTag')]
+    case 'failed': return ['failed', t('failedTag')]
+    case 'stopped': return ['stopped', t('stoppedTag')]
+  }
+}
+
 /** Whether an inventory row falls inside the selected category filter. */
 function matchesCategory(entry: PluginInventoryEntry, filter: CategoryFilter): boolean {
   return filter === 'all' || entry.category === filter
 }
 
 /** Render the read-only plugin inventory: agent presets first, then the global plane. */
-export function PluginInventorySettingsTab(
-  { list, presetName, resolveText, t, useClientSync, retryClient }: PluginInventorySettingsTabProps,
-): ReactNode {
+export function PluginInventorySettingsTab({
+  list, presetName, resolveText, t, useClientSync, retryClient,
+  saveToLibrary, setLibraryState, removeFromLibrary, useSessions,
+}: PluginInventorySettingsTabProps): ReactNode {
   const clientSync = useClientSync(snapshot => snapshot)
   const sectionId = useId()
   const [request, setRequest] = useState(0)
@@ -276,7 +314,22 @@ export function PluginInventorySettingsTab(
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const [presetOpen, setPresetOpen] = useState<boolean | null>(null)
   const [globalOpen, setGlobalOpen] = useState<boolean | null>(null)
+  const [dynamicOpen, setDynamicOpen] = useState<boolean | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [state, setState] = useState<ViewState>({ status: 'loading' })
+  const currentSessionId = useSessions(sessions => sessions.current)
+  const sessionId = currentSessionId
+
+  /** Run one library verb and refresh the snapshot on success. */
+  const runAction = async (action: () => Promise<unknown>): Promise<void> => {
+    setActionError(null)
+    try {
+      await action()
+      setRequest(value => value + 1)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error))
+    }
+  }
 
   useEffect(() => {
     let current = true
@@ -291,6 +344,7 @@ export function PluginInventorySettingsTab(
   const searching = normalizedQuery.length > 0
   const snapshot = state.status === 'ready' ? state.snapshot : undefined
   const presets = snapshot?.agentPresets ?? []
+  const dynamic = snapshot?.dynamic ?? []
   const selected = presets.find(preset => preset.id === chosenPreset) ?? fallbackPreset(presets)
 
   /** Presets that actually enable a module, keyed by module name. */
@@ -318,9 +372,15 @@ export function PluginInventorySettingsTab(
   const entryMatch = (entry: PluginInventoryEntry): boolean =>
     matchesCategory(entry, category) && matches(entry, normalizedQuery, resolveText)
   const rowMatch = (row: AgentPresetRow): boolean => matches(row, normalizedQuery, resolveText)
+  const dynamicMatch = (row: DynamicPluginRow): boolean => {
+    if (normalizedQuery.length === 0) return true
+    return [row.name, row.pluginId].some(value => value.toLocaleLowerCase().includes(normalizedQuery))
+  }
   const filteredFailed = failedEntries.filter(entryMatch)
   const filteredRegular = regularEntries.filter(entryMatch)
+  const filteredDynamic = dynamic.filter(dynamicMatch)
   const globalCount = filteredFailed.length + filteredRegular.length
+  const dynamicCount = filteredDynamic.length
   const selectedRows = selected === undefined ? [] : selected.rows.filter(rowMatch)
   const otherPresetMatches = searching
     ? presets.filter(preset => preset !== selected && preset.rows.some(rowMatch))
@@ -331,15 +391,17 @@ export function PluginInventorySettingsTab(
   // The preset group starts open and the larger global plane folded; a search or category filter opens them for as long as it lasts.
   const presetEffectiveOpen = searching || (presetOpen ?? true)
   const globalEffectiveOpen = searching || (globalOpen ?? false)
+  const dynamicEffectiveOpen = searching || (dynamicOpen ?? false)
   const nothingMatches = (searching || category !== 'all') && globalCount === 0 && selectedRows.length === 0
-    && otherPresetMatches.length === 0
+    && otherPresetMatches.length === 0 && dynamicCount === 0
 
   /** Keys of the cards the current filters keep on screen. */
   const visibleKeys = useMemo(() => new Set([
-    ...selected === undefined ? [] : selectedRows.map((row, index) => `preset:${selected.id}:${String(index)}`),
+    ...selected === undefined ? [] : selectedRows.map((_row, index) => `preset:${selected.id}:${String(index)}`),
     ...filteredFailed.map(entry => `global:${entry.entryId}`),
     ...filteredRegular.map(entry => `global:${entry.entryId}`),
-  ]), [selected, selectedRows, filteredFailed, filteredRegular])
+    ...filteredDynamic.map(row => `dynamic:${row.pluginId}`),
+  ]), [selected, selectedRows, filteredFailed, filteredRegular, filteredDynamic])
 
   useEffect(() => {
     if (expanded !== null && !visibleKeys.has(expanded)) {
@@ -467,6 +529,101 @@ export function PluginInventorySettingsTab(
     )
   }
 
+  /** Library state tag for one persisted plugin; null when not in the library. */
+  const libraryTag = (state: DynamicPluginLibraryState): ReactNode =>
+    <StateTag kind={`lib-${state}`} label={t(LIBRARY_STATE_KEYS[state])} />
+
+  /** Action buttons managing one user-defined plugin's personal-library life. */
+  const libraryActions = (row: DynamicPluginRow): ReactNode => {
+    const requireSession = (): boolean => {
+      if (sessionId !== undefined) return true
+      setActionError(t('libNoSession'))
+      return false
+    }
+    const save = (state: DynamicPluginLibraryState): void => {
+      if (sessionId === undefined) { void requireSession(); return }
+      void runAction(() => saveToLibrary(sessionId, row.pluginId, state))
+    }
+    const set = (state: DynamicPluginLibraryState): void => {
+      if (sessionId === undefined) { void requireSession(); return }
+      void runAction(() => setLibraryState(sessionId, row.pluginId, state))
+    }
+    const remove = (): void => {
+      if (sessionId === undefined) { void requireSession(); return }
+      void runAction(() => removeFromLibrary(sessionId, row.pluginId))
+    }
+    const button = (label: string, onClick: () => void): ReactNode =>
+      <button type="button" className={css.actionButton} onClick={onClick}>{label}</button>
+    if (row.libraryState === undefined) {
+      return (
+        <div className={css.cardActions}>
+          {button(t('libSaveOn'), () => { save('on-editable') })}
+          {button(t('libSaveOff'), () => { save('off') })}
+        </div>
+      )
+    }
+    if (row.libraryState === 'off') {
+      return (
+        <div className={css.cardActions}>
+          {button(t('libEnable'), () => { set('on-editable') })}
+          {button(t('libRemove'), remove)}
+        </div>
+      )
+    }
+    if (row.libraryState === 'on-editable') {
+      return (
+        <div className={css.cardActions}>
+          {button(t('libFreeze'), () => { set('frozen') })}
+          {button(t('libDisable'), () => { set('off') })}
+          {button(t('libRemove'), remove)}
+        </div>
+      )
+    }
+    return (
+      <div className={css.cardActions}>
+        {button(t('libUnfreeze'), () => { set('on-editable') })}
+        {button(t('libDisable'), () => { set('off') })}
+        {button(t('libRemove'), remove)}
+      </div>
+    )
+  }
+
+  /** One user-defined dynamic plugin row, labeled by its lifecycle phase. */
+  const dynamicRowCard = (row: DynamicPluginRow): ReactNode => {
+    const key = `dynamic:${row.pluginId}`
+    const title = moduleShortName(row.name)
+    const [kind, label] = dynamicPhaseTag(row.phase, t)
+    return (
+      <PluginCard
+        key={key}
+        rowKey={key}
+        moduleName={row.name}
+        entryId={row.pluginId}
+        failed={row.phase === 'failed'}
+        expanded={expanded}
+        onToggle={toggleRow}
+        ariaLabel={`${title}, ${label}`}
+        trailing={(
+          <>
+            {row.libraryState === undefined ? null : libraryTag(row.libraryState)}
+            <StateTag kind={kind} label={label} />
+          </>
+        )}
+      >
+        <CardFacts
+          entryId={row.pluginId}
+          facts={[
+            [t('dynamicSession'), row.sessionId],
+            [t('dynamicVersions'), String(row.packageCount)],
+            ...row.currentPackageId === undefined ? [] : [[t('dynamicCurrent'), row.currentPackageId] as const],
+            ...row.purpose.length === 0 ? [] : [[t('dynamicPurpose'), row.purpose] as const],
+          ]}
+        />
+        {libraryActions(row)}
+      </PluginCard>
+    )
+  }
+
   return (
     <div className={css.section} aria-busy={state.status === 'loading'}>
       {clientSync.syncing ? (
@@ -529,8 +686,11 @@ export function PluginInventorySettingsTab(
               </button>
             ))}
           </div>
-          {entries.length === 0 && presets.length === 0 ? <p className={css.status}>{t('empty')}</p> : null}
+          {entries.length === 0 && presets.length === 0 && dynamic.length === 0 ? (
+            <p className={css.status}>{t('empty')}</p>
+          ) : null}
           {nothingMatches ? <p className={css.status}>{t('emptySearch')}</p> : null}
+          {actionError === null ? null : <p className={css.actionError} role="alert">{actionError}</p>}
 
           {selected !== undefined ? (
             <section className={css.group} data-plugin-scope="preset" data-preset-id={selected.id}>
@@ -641,6 +801,33 @@ export function PluginInventorySettingsTab(
               ) : null}
             </section>
           ) : null}
+
+          <section className={css.group} data-plugin-scope="dynamic">
+            <div className={css.groupTitleRow}>
+              <button
+                type="button"
+                className={css.groupToggle}
+                aria-expanded={dynamicEffectiveOpen}
+                aria-controls={`${sectionId}-dynamic`}
+                onClick={() => { setDynamicOpen(!dynamicEffectiveOpen) }}
+              >
+                <IconChevronDownOutline14 className={css.chevron} size={12} aria-hidden="true" />
+                <span className={css.groupTitle}>{t('dynamicTitle')}</span>
+              </button>
+            </div>
+            <p className={css.groupSub}>
+              {t('dynamicSubtitle')}
+              <span data-dynamic-count={dynamicCount}>{` · ${String(dynamicCount)} ${t('countUnit')}`}</span>
+            </p>
+            {dynamicEffectiveOpen && dynamicCount > 0 ? (
+              <ul className={css.cards} id={`${sectionId}-dynamic`}>
+                {filteredDynamic.map(row => dynamicRowCard(row))}
+              </ul>
+            ) : null}
+            {dynamicEffectiveOpen && dynamicCount === 0 ? (
+              <p className={css.status} id={`${sectionId}-dynamic`}>{t('dynamicEmpty')}</p>
+            ) : null}
+          </section>
         </div>
       ) : null}
     </div>

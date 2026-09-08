@@ -7,7 +7,7 @@ import type { Fiber } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   ApprovalRequestId, CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId,
-  CordisDynamicRunMode, DynamicCordisRenderFailure, DynamicCordisRunAttempt,
+  CordisDynamicRunMode, DynamicCordisLibraryState, DynamicCordisRenderFailure, DynamicCordisRunAttempt,
 } from './types.ts'
 
 /** One Host method exposed to this package's Client half. */
@@ -67,6 +67,8 @@ export interface DynamicCordisPlugin {
   run?: DynamicCordisRun
   /** Latest activation attempt, including approval and asynchronous failure state. */
   latestRun?: DynamicCordisRunAttempt
+  /** Personal-library state, present when this plugin is persisted there. */
+  libraryState?: DynamicCordisLibraryState
 }
 
 /** One suspended model-driven activation. */

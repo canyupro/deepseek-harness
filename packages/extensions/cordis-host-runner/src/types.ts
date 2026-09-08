@@ -245,7 +245,25 @@ export interface DynamicCordisInventoryRow {
   }
   /** Latest activation attempt, including pending approval and diagnostics. */
   latestRun?: DynamicCordisRunAttempt
+  /** Personal-library state, present when this plugin is persisted there. */
+  libraryState?: DynamicCordisLibraryState
 }
+
+/** Lifecycle state of one plugin persisted in the personal library. */
+export type DynamicCordisLibraryState = 'off' | 'on-editable' | 'frozen'
+
+/** Save or transition one library plugin to a library state. */
+export interface DynamicCordisLibraryRequest {
+  /** Stable plugin identity. */
+  pluginId: CordisDynamicPluginId
+  /** Target library state. */
+  state: DynamicCordisLibraryState
+}
+
+/** Answer to saving or transitioning one library plugin. */
+export type DynamicCordisLibraryReceipt =
+  | { ok: true; pluginId: CordisDynamicPluginId; state: DynamicCordisLibraryState }
+  | { ok: false; reason: 'plugin-missing' | 'state-invalid' | 'library-unavailable'; message: string }
 
 /** Answer to removing a plugin and all of its package versions. */
 export type DynamicCordisUndefineReceipt =

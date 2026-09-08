@@ -38,6 +38,11 @@ async function bench() {
   const list = vi.fn<() => Promise<ListResult>>()
     .mockResolvedValue({ ok: true, value: EMPTY })
   ctx.provide('remote.pluginInventory', { list })
+  ctx.provide('remote.dynamicCordisRunner', {
+    saveToLibrary: vi.fn(async () => ({ ok: true as const, value: { ok: true as const, pluginId: 'x', state: 'off' as const } })),
+    setLibraryState: vi.fn(async () => ({ ok: true as const, value: { ok: true as const, pluginId: 'x', state: 'off' as const } })),
+    removeFromLibrary: vi.fn(async () => ({ ok: true as const, value: { ok: true as const, wasRunning: false } })),
+  })
   return { ctx, retryClient, slots: ctx.get('slots') as SlotRegistry, locale, list }
 }
 
@@ -54,7 +59,7 @@ describe('ui-settings-plugin-inventory browser plugin', () => {
   })
 
   it('declares only the services used by the Settings Remote contribution', () => {
-    expect(inject).toEqual(['slots', 'locale', 'remote', 'remote.pluginInventory', 'modules'])
+    expect(inject).toEqual(['slots', 'locale', 'remote', 'remote.pluginInventory', 'remote.dynamicCordisRunner', 'modules'])
   })
 
   it('registers a localized tab without reading the Remote eagerly', async () => {

@@ -63,6 +63,9 @@
     "@deepseek-ai/dsh-agent-preset-registry": "workspace:*",
     "@deepseek-ai/dsh-client-modules": "workspace:*",
     "@deepseek-ai/dsh-client-store": "workspace:*"
+    "@deepseek-ai/dsh-cordis-host-runner": "workspace:*",
+    "@deepseek-ai/dsh-invariants": "workspace:*",
+    "@deepseek-ai/dsh-session": "workspace:*",
   },
   "files": [
     "lib/index.js",

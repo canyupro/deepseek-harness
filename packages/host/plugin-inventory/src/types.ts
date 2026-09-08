@@ -60,6 +60,32 @@ export interface AgentPresetPluginRow {
   readonly fiberPhase: PluginFiberPhase
 }
 
+/** Lifecycle phase of one user-defined dynamic plugin row. */
+export type DynamicPluginPhase = 'running' | 'waiting' | 'in-flight' | 'failed' | 'stopped'
+
+/** Personal-library lifecycle state of one user-defined plugin. */
+export type DynamicPluginLibraryState = 'off' | 'on-editable' | 'frozen'
+
+/** One user-defined dynamic plugin projected into the inventory, source-free. */
+export interface DynamicPluginEntry {
+  /** Stable plugin identity minted by the dynamic runner. */
+  readonly pluginId: string
+  /** Package label of the most recently defined version. */
+  readonly name: string
+  /** User-facing purpose of the most recently defined version. */
+  readonly purpose: string
+  /** Session that owns the plugin. */
+  readonly sessionId: string
+  /** Number of immutable package versions. */
+  readonly packageCount: number
+  /** Last package that completed activation successfully. */
+  readonly currentPackageId?: string
+  /** Lifecycle phase derived from the active run and latest attempt. */
+  readonly phase: DynamicPluginPhase
+  /** Personal-library state, present when the plugin is persisted there. */
+  readonly libraryState?: DynamicPluginLibraryState
+}
+
 /** One agent preset's identity and flattened composition in the inventory. */
 export interface AgentPresetPluginGroup {
   /** Stable preset id. */
@@ -84,4 +110,9 @@ export interface PluginInventorySnapshot {
    * composed in this deployment.
    */
   readonly agentPresets?: readonly AgentPresetPluginGroup[]
+  /**
+   * User-defined dynamic plugins, present only when the dynamic runner is
+   * mounted in this process.
+   */
+  readonly dynamic?: readonly DynamicPluginEntry[]
 }

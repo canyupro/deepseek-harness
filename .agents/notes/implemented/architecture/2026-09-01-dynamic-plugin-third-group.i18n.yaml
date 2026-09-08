@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-01-dynamic-plugin-third-group.md
+2026-09-01-dynamic-plugin-third-group.md: 4e643be0ac8365741815eac2af9da57631dae572
+2026-09-01-dynamic-plugin-third-group.zh.md: f131fa7b062d708aa2f5248632373f3708457f73

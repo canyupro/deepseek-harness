@@ -11,6 +11,7 @@ kind: "package-reference"
 
 `dsh-cordis-host-runner` 提供运行时检查，并为程序调用方和浏览器控件保留进程内动态定义。Host 部分在 `node:vm` 中运行；浏览器部分使用 Client runner 和审批 UI。定义在重启后消失。Agent 通过 `tool-cordis` 发现 API，通过 Plugin Manager 安装持久化 bundle；没有模型工具创建动态定义。
 
+
 ## 目录
 
 - [使用本包](#use-this-package)
@@ -38,6 +39,7 @@ kind: "package-reference"
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `vmTimeoutMs` | `5000` | host 半在 vm 中同步执行的那部分被中止求值前可运行的毫秒数 |
+| `libraryHome` | — | 保存插件的宿主 home，其下 `plugins/library.json` 持久化；缺失时个人插件库被禁用 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-cordis-host-runner)是每个受支持字段的穷尽式真源。
 
@@ -48,6 +50,7 @@ kind: "package-reference"
 ### 定义的去向
 
 定义按会话隔离且仅在进程内存在：其他会话无法读取，重启会清空。历史日志保留工具参数和回执，但不会恢复注册表。浏览器页面重载后，需要再次显式运行才能加载 Client 部分。
+
 
 ### 信任立场
 
@@ -73,6 +76,7 @@ runner 基于两项职责划分。**注册表与沙箱是同一个服务。** `D
 |---|---|
 | [`src/index.ts`](src/index.ts) | 服务入口：`Config`、注册表接线、生命周期动词、steering（中途引导）消息 |
 | [`src/registry.ts`](src/registry.ts) | 定义存储：插件与包标识、运行尝试、审批请求 |
+| [`src/library-store.ts`](src/library-store.ts) | 持久的个人插件库文档：读取、原子保存、字段校验 |
 | [`src/sandbox.ts`](src/sandbox.ts) | `node:vm` 求值：全局变量、Node API 陷阱、define 时语法预检 |
 | [`src/guard.ts`](src/guard.ts) | 注册边界：schema 规范化、沙箱 `ctx` façade、插件形态检查 |
 | [`src/lifecycle.ts`](src/lifecycle.ts) | 在 `cordis-dynamic` fiber 组下启动 host 半 |
@@ -132,6 +136,7 @@ runner 基于两项职责划分。**注册表与沙箱是同一个服务。** `D
 - **陈旧成功的拒绝会让请求继续挂起**——作答页面点名的 revision 已被注册表越过时，该结论会被拒绝（`accepted: false`），请求保持可作答，直到另一个页面作答或调用方取消；浏览器半不读这个 ack。
 - **运行播报不携带服务声明**——浏览器半声明的 `inject` 是从它在页面里返回的插件上读出的，因此 `cordis/request-run` 只携带元数据，绝无代码或服务清单。
 - **`zod` 是生成的 Typert 契约面的运行时依赖，不是 `src` 的依赖**——`./typert` 与 `./remote` 解析到未打包的 `lib` 文件，其中带有裸的 `import { z } from 'zod'`，所以即使 `src` 里没有任何代码 import zod，本包也要声明它。
+- **个人库按宿主、按版本授权**——保存的插件持久化在宿主 home 下，启动时按保存时记录的授权运行；损坏的文档大声失败而非静默丢插件，为 `on-editable` 插件就地编辑源码（而非仅追加新版本）是延期工作。
 
 <a id="dev-note"></a>
 ### 开发备注

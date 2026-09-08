@@ -1,5 +1,5 @@
 ---
-description: "Read-only projection of the current Cordis Loader plugin state with each agent preset's composition beside it: the pluginInventory service and its pluginInventory/list Remote for web GUI host clients."
+description: "Read-only projection of the current Cordis Loader plugin state with each agent preset's composition beside it and user-defined dynamic plugins when the dynamic runner is mounted: the pluginInventory service and its pluginInventory/list Remote for web GUI host clients."
 kind: "package-reference"
 ---
 
@@ -9,11 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-<<<<<<< HEAD
-Clients can call `pluginInventory/list` to display the host’s current plugins in load order, including each entry’s identifier, module specifier, effective enablement, live phase, available display text, and declared category — projected from the entry’s static `category` metadata (`core`, `extension`, `ui`, `other`), with an absent or unrecognized value landing in `other`. Deployments with an agent-preset roster also report each preset’s metadata, health, and flattened plugin composition; without a roster, preset data is absent. Each response is a point-in-time, read-only snapshot for display and diagnostics: it cannot mutate plugins and provides no history or change subscription.
-=======
-Clients can call `pluginInventory/list` to display the host’s current plugins in load order, including each entry’s identifier, module specifier, effective enablement, live phase, and declared category — projected from the entry’s static `category` metadata (`core`, `extension`, `ui`, `other`), with an absent or unrecognized value landing in `other`. Deployments with an agent-preset roster also report each preset’s metadata, health, and flattened plugin composition; without a roster, preset data is absent. Each response is a point-in-time, read-only snapshot for display and diagnostics: it cannot mutate plugins and provides no history, provenance, or change subscription.
->>>>>>> b744df36d9 (feat(loader): classify plugin rows with a category metadata field)
+Clients can call `pluginInventory/list` to display the host’s current plugins in load order, including each entry’s identifier, module specifier, effective enablement, live phase, available display text, and declared category — projected from the entry’s static `category` metadata (`core`, `extension`, `ui`, `other`), with an absent or unrecognized value landing in `other`. Deployments with an agent-preset roster also report each preset’s metadata, health, and flattened plugin composition; without a roster, preset data is absent. When the dynamic Cordis runner is mounted, the snapshot also carries `dynamic`: one row per user-defined plugin a session defined in this process — plugin id, newest package name and purpose, owning session id, version count, current package when activation completed, and a phase (`running`, `waiting`, `in-flight`, `failed`, or `stopped`) derived from the runner's run state — because these plugins mount as ad-hoc fibers under the runner instead of Loader entries. Each response is a point-in-time, read-only snapshot for display and diagnostics: it cannot mutate plugins and provides no history or change subscription.
 
 ## Table of Contents
 
@@ -41,6 +37,10 @@ Loader and preset rows can carry optional `meta` with a title, description, or m
 
 With a roster composed, `agentPresets` carries one group per preset in roster order: its id, whether the deployment ships it or the user owns it (`trust`, which clients use to localize shipped names), published display name, whether a session naming no preset composes it, and flattened plugin rows — entry id (null when the file row declares none), module specifier, effective enablement, the row's own `!!js` disabled expression when it carries one, and a root-fiber phase when the composition is live. A preset some session already composed answers from its newest standing generation — even when its file has since broken, because the mount is what those sessions run; one never composed since boot answers from its composition file with disabled gates evaluated against the Loader context, and reading never mounts a preset. `conditional` enablement marks a gate the Host could not evaluate, and a broken preset nothing composed stays listed with its reason and no rows. Without a roster the field is absent.
 
+### User-defined dynamic plugins
+
+With the dynamic runner mounted, `dynamic` carries one row per plugin a session defined in this process, in definition order: the stable plugin id, the newest package's name and purpose, the owning session id, the count of immutable package versions, the current package id when one completed activation, and a phase derived from the runner's run state — `running` while an activation is live (`waiting` when the current attempt itself waits for approval or the browser), `in-flight` while the newest attempt sits between host and client activation, `failed` when the newest attempt failed, was rejected, or was cancelled, and `stopped` otherwise. These rows are process-local: a restart drops every dynamic plugin and with it the whole array.
+
 ### What you can and cannot do with it
 
 The inventory is a snapshot for display and diagnostics: a client can render the roster, flag failed entries, and detect changes by comparing snapshots. It cannot enable, disable, add, or remove plugins, and it carries no history — a fiber that already failed and was removed is absent. Because the service reads the Loader on every call, the answer always reflects the current composition rather than a cached view.
@@ -55,7 +55,7 @@ The inventory is a snapshot for display and diagnostics: a client can render the
 
 ### Design concept
 
-The gateway is a direct projection with no second lifecycle truth: every `list()` call reads `ctx.loader.entries()` and maps each non-group entry to its public row. Cordis's internal `plugin/status` events already maintain `Entry.fiber` and `Fiber.state`, so a cache would only add another lifecycle truth to keep synchronized. The agent-preset roster is an optional peer resolved per call through `ctx.get('agentPresets')`: its `compositionInventory()` owns preset composition reads, and this package maps root-fiber states onto the public phases.
+The gateway is a direct projection with no second lifecycle truth: every `list()` call reads `ctx.loader.entries()` and maps each non-group entry to its public row. Cordis's internal `plugin/status` events already maintain `Entry.fiber` and `Fiber.state`, so a cache would only add another lifecycle truth to keep synchronized. The agent-preset roster is an optional peer resolved per call through `ctx.get('agentPresets')`: its `compositionInventory()` owns preset composition reads, and this package maps root-fiber states onto the public phases. The dynamic runner is the same kind of optional peer, resolved per call through `ctx.get('dynamicCordisRunner')`: its `inventory()` owns every dynamic-plugin read, and this package only folds run states onto the dynamic phase vocabulary.
 
 Display metadata comes from the optional `pluginPackages` service using each Loader tree's resolution base, or the gateway context's base for preset rows. Without the service or the applicable base, `meta` is absent. Reading metadata does not load or activate plugins.
 
@@ -68,8 +68,8 @@ Fiber states map onto the public phase vocabulary, with `disposed` folding into 
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | `PluginInventoryGateway`: the `pluginInventory` Remote service and the Loader projection |
-| [`src/types.ts`](src/types.ts) | Public payload types: `PluginInventoryEntry`, `PluginInventorySnapshot`, `PluginFiberPhase`, `PluginCategory` |
-| — | No runtime invariant companion is published; every snapshot is projected directly from Loader-owned state. |
+| [`src/types.ts`](src/types.ts) | Public payload types: `PluginInventoryEntry`, `PluginInventorySnapshot`, `PluginFiberPhase`, `PluginCategory`, `DynamicPluginEntry` |
+| [`src/invariant.ts`](src/invariant.ts) | Invariant companion (no runtime invariant; every snapshot projects Loader-owned state) |
 
 Typert generates the Host and Client Remote artifacts exposed by `./typert` and `./remote`.
 
@@ -107,6 +107,7 @@ These limits define what a point-in-time inventory cannot tell a client. They ar
 - **Point-in-time state only** — the result contains no durable failure history or subscription; a missing root Fiber is reported as `null`, regardless of why no live root exists.
 - **No layer attribution or mutation** — the service does not identify which bundle, profile, or override introduced an entry, and it cannot enable, disable, add, or remove plugins in either plane.
 - **Presets appear only with a roster** — a deployment without `dsh-agent-preset-registry` serves Loader entries alone; the `agentPresets` field is absent rather than empty.
+- **Dynamic plugins appear only with the runner composed** — a deployment whose composition mounts no dynamic Cordis runner serves `entries` (plus presets when a roster is composed) alone; the `dynamic` field is absent rather than empty, and a restart of the process drops every user-defined plugin with it.
 
 <a id="dev-note"></a>
 ### Dev Note

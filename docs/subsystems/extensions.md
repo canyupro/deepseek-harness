@@ -183,6 +183,44 @@ async stop(agent: Agent, pluginId: CordisDynamicPluginId): Promise<DynamicCordis
 @Remote('inventory') inventory(): DynamicCordisInventoryRow[]
 
 /**
+ * Persist a session-owned plugin into the personal library and re-own it
+ * there. Saving with `off` stops it; `on-editable` and `frozen` keep it
+ * running under the persisted authorization for the current version.
+ * @param agent - Agent whose Session owns the plugin being saved.
+ * @param request - plugin identity and target library state.
+ * @returns whether the plugin entered the library and under which state.
+ */
+@Remote('saveToLibrary') async saveToLibrary(agent: Agent, request: DynamicCordisLibraryRequest): Promise<DynamicCordisLibraryReceipt>
+
+/**
+ * Transition one library plugin to another state. `on-editable` grants
+ * plugin-wide authorization (free iteration); `frozen` keeps only the
+ * current version approved (updates require a fresh authorization); `off`
+ * stops the running plugin while keeping its definition persisted.
+ * @param agent - Agent whose Session performs the transition.
+ * @param request - library plugin identity and target state.
+ * @returns whether the transition applied and under which state.
+ */
+@Remote('setLibraryState') async setLibraryState(agent: Agent, request: DynamicCordisLibraryRequest): Promise<DynamicCordisLibraryReceipt>
+
+/**
+ * Remove one library plugin: its persisted definition, its active run, and
+ * every package version.
+ * @param agent - Agent whose Session removes the plugin.
+ * @param pluginId - library plugin identity to remove.
+ * @returns whether removal succeeded and whether it stopped an active run.
+ */
+@Remote('removeFromLibrary') async removeFromLibrary(agent: Agent, pluginId: CordisDynamicPluginId): Promise<DynamicCordisUndefineReceipt>
+
+/**
+ * Re-create every enabled library plugin from the persisted document, then
+ * activate its current version under the persisted authorization. Called
+ * once at boot so a restart restores the user's saved plugins; concurrent
+ * calls share one in-flight mount.
+ */
+async mountLibrary(): Promise<void>
+
+/**
  * Read one Session's Host-rich state for inspection and result rendering.
  * @param agent - Agent whose Session selects visible Plugins.
  * @returns Plugin versions, active runs, Host fibers, and render failures.

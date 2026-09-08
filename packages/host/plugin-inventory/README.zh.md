@@ -1,5 +1,5 @@
 ---
-description: "当前 Cordis Loader 插件状态的只读投影，并附带每个 agent preset（智能体预设）的组合：面向 web GUI 宿主客户端的 pluginInventory 服务及其 pluginInventory/list Remote。"
+description: "当前 Cordis Loader 插件状态的只读投影，并附带每个 agent preset（智能体预设）的组合以及挂载动态 runner 时的用户自定义动态插件：面向 web GUI 宿主客户端的 pluginInventory 服务及其 pluginInventory/list Remote。"
 kind: "package-reference"
 ---
 
@@ -9,11 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-<<<<<<< HEAD
-客户端可以调用 `pluginInventory/list`，按加载顺序展示宿主的当前插件，包括每个条目的标识符、模块标识、有效启用状态、存活阶段、可用的展示文本与声明的分类——分类投影自条目静态的 `category` 元数据（`core`、`extension`、`ui`、`other`），缺失或无法识别的值归入 `other`。部署组合了 agent preset roster 时，还会报告各预设的元数据、健康状态与压平后的插件组合；没有 roster 时，预设数据缺席。每次响应都是供展示和诊断使用的只读即时快照：它不能修改插件，也不提供历史或变更订阅。
-=======
-客户端可以调用 `pluginInventory/list`，按加载顺序展示宿主的当前插件，包括每个条目的标识符、模块标识、有效启用状态、存活阶段与声明的分类——分类投影自条目静态的 `category` 元数据（`core`、`extension`、`ui`、`other`），缺失或无法识别的值归入 `other`。部署组合了 agent preset roster 时，还会报告各预设的元数据、健康状态与压平后的插件组合；没有 roster 时，预设数据缺席。每次响应都是供展示和诊断使用的只读即时快照：它不能修改插件，也不提供历史、来源信息或变更订阅。
->>>>>>> b744df36d9 (feat(loader): classify plugin rows with a category metadata field)
+客户端可以调用 `pluginInventory/list`，按加载顺序展示宿主的当前插件，包括每个条目的标识符、模块标识、有效启用状态、存活阶段、可用的展示文本与声明的分类——分类投影自条目静态的 `category` 元数据（`core`、`extension`、`ui`、`other`），缺失或无法识别的值归入 `other`。部署组合了 agent preset roster 时，还会报告各预设的元数据、健康状态与压平后的插件组合；没有 roster 时，预设数据缺席。当部署挂载了动态 Cordis runner 时，快照还携带 `dynamic`：会话在本进程内创建的每个用户自定义插件一行——插件 id、最新包的名称与用途、所属会话 id、版本数、激活完成的当前包，以及由 runner 运行状态推导的阶段（`running`、`waiting`、`in-flight`、`failed` 或 `stopped`）——因为这些插件以 runner 下的临时 fiber 挂载，而不是 Loader 条目。每次响应都是供展示和诊断使用的只读即时快照：它不能修改插件，也不提供历史或变更订阅。
 
 ## 目录
 
@@ -41,6 +37,10 @@ Loader 行与预设行可以携带可选的 `meta`，其中包含标题、描述
 
 组合了 roster 时，`agentPresets` 按 roster 顺序携带每个预设一组：其 id、随部署内置还是用户自建（`trust`，客户端据此本地化内置预设名）、发布的显示名、未指名预设的会话是否组合它，以及压平后的插件行——条目 id（文件行未声明时为 null）、模块标识、有效启用状态、行自带的 `!!js` disabled 表达式（如有），以及组合存活时的根 Fiber 阶段。已有会话组合过的预设由其最新仍存续的世代作答——即使其文件事后损坏也是如此，因为挂载才是这些会话实际运行的组合；开机以来从未被组合的预设由其组合文件作答，disabled 门用 Loader 上下文求值，且读取从不挂载预设。`conditional` 表示宿主无法求值的门；无人组合的坏预设保留在列表中，携带原因且没有行。没有 roster 时该字段缺席。
 
+### 用户自定义动态插件
+
+挂载了动态 runner 时，`dynamic` 按定义顺序携带会话在本进程内创建的每个插件一行：稳定插件 id、最新包的名称与用途、所属会话 id、不可变包版本数、完成激活的当前包 id（如有），以及由 runner 运行状态推导的阶段——有激活在进行时为 `running`（当前尝试自身等待批准或浏览器时为 `waiting`），最新尝试处于宿主与客户端激活之间时为 `in-flight`，最新尝试失败、被拒绝或被取消时为 `failed`，其余为 `stopped`。这些行只存在于当前进程：进程重启会丢弃所有动态插件，整个数组随之缺席。
+
 ### 你能用它做什么、不能做什么
 
 该清单是供展示与诊断的快照：客户端可以渲染名单、标出失败条目，并通过比较快照检测变化。它不能启用、停用、添加或移除插件，也不携带历史——已经失败并被移除的 fiber 缺席。由于服务每次调用都读取 Loader，答案总是反映当前组合，而不是缓存视图。
@@ -59,6 +59,8 @@ Loader 行与预设行可以携带可选的 `meta`，其中包含标题、描述
 
 展示元信息来自可选的 `pluginPackages` 服务：Loader 行使用其所属树的解析基准，预设行使用网关上下文的基准。服务或对应基准不存在时，`meta` 缺席。读取元信息不会加载或激活插件。
 
+动态 runner 是同类可选伙伴，每次调用经 `ctx.get('dynamicCordisRunner')` 解析：所有动态插件读取都由它的 `inventory()` 负责，本包只把运行状态折叠到动态阶段词汇。
+
 ### 阶段映射
 
 Fiber 状态映射到公共阶段词汇，其中 `disposed` 折叠为 `null`——fiber 已消失的条目没有可报告的存活根。因此阶段从不区分为什么没有存活根：条目可能从未启动，也可能其 fiber 已被释放。
@@ -68,8 +70,8 @@ Fiber 状态映射到公共阶段词汇，其中 `disposed` 折叠为 `null`—�
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | `PluginInventoryGateway`：`pluginInventory` Remote 服务与 Loader 投影 |
-| [`src/types.ts`](src/types.ts) | 公共 payload 类型：`PluginInventoryEntry`、`PluginInventorySnapshot`、`PluginFiberPhase`、`PluginCategory` |
-| — | 不发布运行时不变式伴生入口；每个快照都投影 Loader 持有的状态。 |
+| [`src/types.ts`](src/types.ts) | 公共 payload 类型：`PluginInventoryEntry`、`PluginInventorySnapshot`、`PluginFiberPhase`、`PluginCategory`、`DynamicPluginEntry` |
+| [`src/invariant.ts`](src/invariant.ts) | 不变式伴生插件（无运行时不变式；每个快照都投影 Loader 持有的状态） |
 
 Typert 生成由 `./typert` 与 `./remote` 导出的 Host 和 Client Remote 产物。
 
@@ -107,6 +109,7 @@ Typert 生成由 `./typert` 与 `./remote` 导出的 Host 和 Client Remote 产�
 - **仅表示调用当下**——结果不包含持久的失败历史或订阅；只要不存在存活的根 Fiber，就会报告 `null`，而不区分其原因。
 - **不标识引入层，也不修改插件**——服务不识别条目由哪个 bundle、profile 或 override 引入，也不能在任一平面启用、停用、添加或移除插件。
 - **预设仅随 roster 出现**——未装 `dsh-agent-preset-registry` 的部署只提供 Loader 条目；`agentPresets` 字段缺席而非为空。
+- **动态插件仅随 runner 出现**——组合未挂载动态 Cordis runner 的部署只提供 `entries`（组合 roster 时另有预设）；`dynamic` 字段缺席而非为空数组，进程重启会一并丢弃所有用户自定义插件。
 
 <a id="dev-note"></a>
 ### 开发备注

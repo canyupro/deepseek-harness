@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-14-plugin-row-category-metadata.md
-2026-08-14-plugin-row-category-metadata.md: add4a2e0a12d7de38e31bfe48947d23766313068
-2026-08-14-plugin-row-category-metadata.zh.md: b109c6ceb78096cbe825c606206be556484c798a
+2026-08-14-plugin-row-category-metadata.md: bf272d9c31c2b7eb30eaa52795d38c4a7965bd29
+2026-08-14-plugin-row-category-metadata.zh.md: 034f2e8c38fbc595eeb3f4ac6b7587bd18219f70

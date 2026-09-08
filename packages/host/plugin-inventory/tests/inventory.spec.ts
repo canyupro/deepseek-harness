@@ -7,7 +7,13 @@ import { Context, FiberState, type Plugin } from '@deepseek-ai/cordis'
 import { PluginPackages, readPluginMeta, type RuntimeResolution } from '@deepseek-ai/dsh-app-boot'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
+<<<<<<< HEAD
 import type { AgentPresetRegistry } from '@deepseek-ai/dsh-agent-preset-registry'
+=======
+import type { AgentPresets } from '@deepseek-ai/dsh-agent-presets'
+// Type-only: pulls the dynamic runner Context augmentation for `ctx.provide`.
+import type {} from '@deepseek-ai/dsh-cordis-host-runner'
+>>>>>>> ce7deb1d60 (wip: dynamic user-defined plugins — library state, inventory projection, settings UI)
 import PluginInventoryGateway from '../src/index.ts'
 
 const contexts: Context[] = []
@@ -244,5 +250,73 @@ describe('PluginInventoryGateway', () => {
       expect.objectContaining({ entryId: uiId, category: 'ui' }),
       expect.objectContaining({ entryId: unknownId, category: 'other' }),
     ]))
+  })
+
+  it('projects dynamic runner rows into a third source-free group with derived phases', async () => {
+    const { ctx, inventory } = await harness()
+    const attempt = (status: string): Record<string, unknown> => ({
+      pluginRunId: 'r',
+      packageId: 'pkg',
+      mode: 'run',
+      status,
+      host: { status: 'stopped', waitingFor: [] },
+      client: { status: 'stopped', waitingFor: [] },
+    })
+    const row = (overrides: Record<string, unknown>): Record<string, unknown> => ({
+      pluginId: 'plg',
+      agentId: 'sess',
+      packages: [{ packageId: 'pkg', name: 'pkg-name', purpose: 'purpose-text', hasHostHalf: true, hasClientHalf: true }],
+      ...overrides,
+    })
+    ctx.provide('dynamicCordisRunner', {
+      inventory: () => [
+        row({ pluginId: 'running', currentPackageId: 'pkg', activeRun: { pluginRunId: 'r', packageId: 'pkg' }, latestRun: attempt('running') }),
+        row({ pluginId: 'waiting', activeRun: { pluginRunId: 'r', packageId: 'pkg' }, latestRun: attempt('waiting') }),
+        row({ pluginId: 'approval', latestRun: attempt('awaiting-approval') }),
+        row({ pluginId: 'starting', latestRun: attempt('starting-host') }),
+        row({ pluginId: 'clientPending', latestRun: attempt('client-pending') }),
+        row({ pluginId: 'failed', latestRun: attempt('failed') }),
+        row({ pluginId: 'rejected', latestRun: attempt('rejected') }),
+        row({ pluginId: 'cancelled', latestRun: attempt('cancelled') }),
+        row({ pluginId: 'stopped', latestRun: attempt('stopped') }),
+        row({ pluginId: 'idle' }),
+        row({ pluginId: 'nameless', packages: [], activeRun: { pluginRunId: 'r', packageId: 'pkg' } }),
+        row({ pluginId: 'activeNoAttempt', activeRun: { pluginRunId: 'r', packageId: 'pkg' } }),
+        row({ pluginId: 'frozen', libraryState: 'frozen' }),
+        row({ pluginId: 'libraryOff', libraryState: 'off' }),
+      ],
+    } as never)
+
+    const snapshot = await inventory.list()
+    expect(snapshot.dynamic?.map(entry => [entry.pluginId, entry.phase])).toEqual([
+      ['running', 'running'],
+      ['waiting', 'waiting'],
+      ['approval', 'in-flight'],
+      ['starting', 'in-flight'],
+      ['clientPending', 'in-flight'],
+      ['failed', 'failed'],
+      ['rejected', 'failed'],
+      ['cancelled', 'failed'],
+      ['stopped', 'stopped'],
+      ['idle', 'stopped'],
+      ['nameless', 'running'],
+      ['activeNoAttempt', 'running'],
+      ['frozen', 'stopped'],
+      ['libraryOff', 'stopped'],
+    ])
+
+    const byId = new Map((snapshot.dynamic ?? []).map(entry => [entry.pluginId, entry]))
+    expect(byId.get('running')).toMatchObject({
+      name: 'pkg-name',
+      purpose: 'purpose-text',
+      sessionId: 'sess',
+      packageCount: 1,
+      currentPackageId: 'pkg',
+    })
+    expect(byId.get('nameless')).toMatchObject({ name: 'nameless', purpose: '', packageCount: 0 })
+    expect(byId.get('nameless')?.currentPackageId).toBeUndefined()
+    expect(byId.get('frozen')?.libraryState).toBe('frozen')
+    expect(byId.get('libraryOff')?.libraryState).toBe('off')
+    expect(byId.get('running')?.libraryState).toBeUndefined()
   })
 })

@@ -3,6 +3,7 @@
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-modules/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { CordisDynamicPluginId } from '@deepseek-ai/dsh-cordis-host-runner/types'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the 'settings.agentPreset' LocaleNamespaceMap merge, whose
@@ -27,7 +28,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const NS = 'settings.pluginInventory'
 
 /** Services required by the Settings registration and generated Remote face. */
-export const inject = ['slots', 'locale', 'remote', 'remote.pluginInventory', 'modules']
+export const inject = ['slots', 'locale', 'remote', 'remote.pluginInventory', 'remote.dynamicCordisRunner', 'modules']
 
 /** Contribute the lazy inventory tab to the Plugins settings section. */
 export function apply(ctx: ClientContext): void {
@@ -41,16 +42,40 @@ export function apply(ctx: ClientContext): void {
     }
     return result.value
   }
+  // The personal-plugin-library verbs. Every one carries a receipt whose own
+  // `ok` reports domain refusals (unknown plugin, invalid state, no library).
+  const librarySave: PluginInventorySettingsTabInjected['saveToLibrary'] = async (sessionId, pluginId, state) => {
+    const result = await ctx.remote.dynamicCordisRunner.saveToLibrary(sessionId, { pluginId: pluginId as CordisDynamicPluginId, state })
+    if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
+    if (!result.value.ok) throw new Error(result.value.message)
+    return result.value
+  }
+  const librarySetState: PluginInventorySettingsTabInjected['setLibraryState'] = async (sessionId, pluginId, state) => {
+    const result = await ctx.remote.dynamicCordisRunner.setLibraryState(sessionId, { pluginId: pluginId as CordisDynamicPluginId, state })
+    if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
+    if (!result.value.ok) throw new Error(result.value.message)
+    return result.value
+  }
+  const libraryRemove: PluginInventorySettingsTabInjected['removeFromLibrary'] = async (sessionId, pluginId) => {
+    const result = await ctx.remote.dynamicCordisRunner.removeFromLibrary(sessionId, pluginId as CordisDynamicPluginId)
+    if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
+    if (!result.value.ok) throw new Error(result.value.message)
+    return result.value
+  }
   // Resolved per call over ui-agent-preset's dictionaries, so a language
   // switch re-resolves shipped names; user-authored metadata passes through.
   const agentPresetCopy = ctx.locale.bind('settings.agentPreset')
   const presetName: PluginInventorySettingsTabInjected['presetName'] = preset =>
     presetDisplayText(preset, agentPresetCopy).name
   const injected = (): PluginInventorySettingsTabInjected => ({
-    list, presetName,
+    list,
+    presetName,
     resolveText: text => ctx.locale.resolveText(text),
     hooks: { clientSync: ctx.modules.entries.state },
     retryClient: () => { void ctx.modules.entries.retry().catch((error: unknown) => { ctx.logger.error(error) }) },
+    saveToLibrary: librarySave,
+    setLibraryState: librarySetState,
+    removeFromLibrary: libraryRemove,
   })
 
   ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({

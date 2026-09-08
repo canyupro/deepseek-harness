@@ -52,9 +52,14 @@
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~"
+    "@deepseek-ai/dsh-cordis-host-runner": "workspace:*",
+    "@deepseek-ai/dsh-invariants": "workspace:*",
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-agent-preset-registry": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-cordis-host-runner": {
       "optional": true
     }
   },
@@ -66,5 +71,7 @@
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~"
+    "@deepseek-ai/dsh-cordis-host-runner": "workspace:*",
+    "@deepseek-ai/dsh-invariants": "workspace:*",
   }
 }

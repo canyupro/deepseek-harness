@@ -19,6 +19,10 @@ import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { isPlugin, normalizeHandler } from './guard.ts'
 import { CordisInspectRegistryService } from './inspect-registry.ts'
+import {
+  findLibraryPlugin, loadLibrary, removeLibraryPlugin, saveLibrary, upsertLibraryPlugin,
+  type LibraryPluginRecord,
+} from './library-store.ts'
 import { missingServices, startHostHalf } from './lifecycle.ts'
 import { DynamicCordisRegistry } from './registry.ts'
 import type {
@@ -32,7 +36,8 @@ import type {
   ApprovalRequestId, CordisDynamicPackageId, CordisDynamicPluginId, CordisDynamicPluginRunId, CordisErrorDetails,
   CordisDynamicRunMode, CordisInspectProviderManifest, CordisInspectQueryResolution,
   CordisInspectRequestId, CordisInspectResolveAck, DynamicCordisClientSource, DynamicCordisHostHalfResult,
-  DynamicCordisInventoryRow, DynamicCordisInvokeResult, DynamicCordisRenderFailure, DynamicCordisResolveAck,
+  DynamicCordisInventoryRow, DynamicCordisInvokeResult, DynamicCordisLibraryReceipt,
+  DynamicCordisLibraryRequest, DynamicCordisLibraryState, DynamicCordisRenderFailure, DynamicCordisResolveAck,
   DynamicCordisRunAttempt, DynamicCordisRunResolution, DynamicCordisRunResponse, DynamicCordisStopResponse,
   DynamicCordisUndefineReceipt, RequestRunOutcome,
 } from './types.ts'
@@ -93,9 +98,11 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
   /** Maximum synchronous VM evaluation time in milliseconds. */
   vmTimeoutMs?: number
+  /** Host home persisting saved plugins under `plugins/library.json`. */
+  libraryHome?: string
 }
 
-type ResolvedConfig = Required<Config>
+type ResolvedConfig = Required<Omit<Config, 'libraryHome'>> & { libraryHome: string | undefined }
 
 /** Host-only snapshot consumed by inspect and tool result rendering. */
 export interface DynamicCordisSnapshotRow {
@@ -131,6 +138,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
 
   static Config: z<Config> = z.object({
     vmTimeoutMs: z.number().min(1).default(5000),
+    libraryHome: z.string(),
   })
 
   private readonly rootCtx: Context
@@ -144,8 +152,16 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   constructor(ctx: Context, config: Config) {
     super(ctx, 'dynamicCordisRunner')
     this.rootCtx = ctx
-    this.resolved = config as ResolvedConfig
+    this.resolved = { vmTimeoutMs: config.vmTimeoutMs ?? 5000, libraryHome: config.libraryHome }
     this.inspectRegistry = new CordisInspectRegistryService(ctx)
+    // Boot auto-mount: re-create every enabled library plugin so a restart
+    // restores the user's saved plugins with their persisted authorization.
+    ctx.effect(() => {
+      void this.mountLibrary().catch((error: unknown) => {
+        this.ctx.logger.error('personal plugin library mount failed', error)
+      })
+      return () => {}
+    })
   }
 
   /**
@@ -181,7 +197,10 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
       this.registry.add(plugin)
     } else {
       const found = this.registry.get(request.plugin.pluginId)
-      if (found === undefined || found.sessionId !== request.sessionId) {
+      // The defining session owns the plugin, or the plugin lives in the
+      // personal library the session manages (an editable library plugin).
+      if (found === undefined
+        || (found.sessionId !== request.sessionId && found.libraryState === undefined)) {
         throw new Error(missingPluginMessage(request.plugin.pluginId))
       }
       plugin = found
@@ -391,7 +410,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     pluginId: CordisDynamicPluginId,
     pluginRunId: CordisDynamicPluginRunId,
   ): DynamicCordisClientSource {
-    const plugin = this.owned(agent, pluginId)
+    const plugin = this.managedPlugin(agent, pluginId)
     if (plugin === undefined) throw new Error(missingPluginMessage(pluginId))
     const run = plugin.run
     if (run === undefined || run.pluginRunId !== pluginRunId) {
@@ -445,7 +464,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     pluginId: CordisDynamicPluginId,
     resolution: DynamicCordisRunResolution,
   ): Promise<DynamicCordisRunResponse> {
-    const plugin = this.owned(agent, pluginId)
+    const plugin = this.managedPlugin(agent, pluginId)
     if (plugin === undefined) return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(pluginId) }
     const settled = await this.settleActivation(plugin, resolution)
     this.injectUserRunOutcome(agent, pluginId, settled)
@@ -459,7 +478,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
    * @returns Success or the reason no run was stopped.
    */
   async stop(agent: Agent, pluginId: CordisDynamicPluginId): Promise<DynamicCordisStopResponse> {
-    const plugin = this.owned(agent, pluginId)
+    const plugin = this.managedPlugin(agent, pluginId)
     if (plugin === undefined) return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(pluginId) }
     const pending = this.registry.pendingRequestFor(pluginId)
     if (plugin.run === undefined && pending === undefined) {
@@ -485,7 +504,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   async stopFromPanel(agent: Agent, pluginId: CordisDynamicPluginId): Promise<DynamicCordisStopResponse> {
     const result = await this.stop(agent, pluginId)
     if (!result.ok) return result
-    const plugin = this.owned(agent, pluginId)
+    const plugin = this.managedPlugin(agent, pluginId)
     this.injectUserContext(
       agent,
       `The user stopped Cordis Plugin ${pluginId}. Its Packages remain defined; currentPackageId is `
@@ -544,9 +563,127 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
         activeRun: { pluginRunId: plugin.run.pluginRunId, packageId: plugin.run.packageId },
       },
       ...plugin.latestRun === undefined ? {} : { latestRun: cloneAttempt(plugin.latestRun) },
+      ...plugin.libraryState === undefined ? {} : { libraryState: plugin.libraryState },
     }))
   }
   /* jscpd:ignore-end */
+
+  /**
+   * Persist a session-owned plugin into the personal library and re-own it
+   * there. Saving with `off` stops it; `on-editable` and `frozen` keep it
+   * running under the persisted authorization for the current version.
+   * @param agent - Agent whose Session owns the plugin being saved.
+   * @param request - plugin identity and target library state.
+   * @returns whether the plugin entered the library and under which state.
+   */
+  @Remote('saveToLibrary')
+  async saveToLibrary(agent: Agent, request: DynamicCordisLibraryRequest): Promise<DynamicCordisLibraryReceipt> {
+    const home = this.resolved.libraryHome
+    if (home === undefined) {
+      return { ok: false, reason: 'library-unavailable', message: 'the personal plugin library is not enabled' }
+    }
+    const plugin = this.owned(agent, request.pluginId)
+    if (plugin === undefined) return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(request.pluginId) }
+    if (!isLibraryState(request.state)) {
+      return { ok: false, reason: 'state-invalid', message: `unknown library state "${String(request.state)}"` }
+    }
+    this.persistLibraryState(home, plugin, request.state)
+    await this.applyLibraryState(plugin, request.state)
+    this.injectUserContext(
+      agent,
+      `The user saved Cordis Plugin ${plugin.pluginId} to the personal plugin library as ${request.state}.`,
+    )
+    return { ok: true, pluginId: plugin.pluginId, state: request.state }
+  }
+
+  /**
+   * Transition one library plugin to another state. `on-editable` grants
+   * plugin-wide authorization (free iteration); `frozen` keeps only the
+   * current version approved (updates require a fresh authorization); `off`
+   * stops the running plugin while keeping its definition persisted.
+   * @param agent - Agent whose Session performs the transition.
+   * @param request - library plugin identity and target state.
+   * @returns whether the transition applied and under which state.
+   */
+  @Remote('setLibraryState')
+  async setLibraryState(agent: Agent, request: DynamicCordisLibraryRequest): Promise<DynamicCordisLibraryReceipt> {
+    const home = this.resolved.libraryHome
+    if (home === undefined) {
+      return { ok: false, reason: 'library-unavailable', message: 'the personal plugin library is not enabled' }
+    }
+    const plugin = this.libraryPlugin(request.pluginId)
+    if (plugin === undefined) return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(request.pluginId) }
+    if (!isLibraryState(request.state)) {
+      return { ok: false, reason: 'state-invalid', message: `unknown library state "${String(request.state)}"` }
+    }
+    this.persistLibraryState(home, plugin, request.state)
+    await this.applyLibraryState(plugin, request.state)
+    this.injectUserContext(
+      agent,
+      `The user set Cordis Plugin ${plugin.pluginId} to library state ${request.state}.`,
+    )
+    return { ok: true, pluginId: plugin.pluginId, state: request.state }
+  }
+
+  /**
+   * Remove one library plugin: its persisted definition, its active run, and
+   * every package version.
+   * @param agent - Agent whose Session removes the plugin.
+   * @param pluginId - library plugin identity to remove.
+   * @returns whether removal succeeded and whether it stopped an active run.
+   */
+  @Remote('removeFromLibrary')
+  async removeFromLibrary(agent: Agent, pluginId: CordisDynamicPluginId): Promise<DynamicCordisUndefineReceipt> {
+    const plugin = this.libraryPlugin(pluginId)
+    if (plugin === undefined) return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(pluginId) }
+    const home = this.resolved.libraryHome
+    if (home !== undefined) {
+      const document = loadLibrary(home)
+      if (removeLibraryPlugin(document, pluginId)) saveLibrary(home, document)
+    }
+    const wasRunning = plugin.run !== undefined
+    this.cancelPending(pluginId, `dynamic plugin "${pluginId}" was removed from the library`)
+    if (plugin.run !== undefined) await this.retract(plugin)
+    this.registry.delete(pluginId)
+    this.injectUserContext(agent, `The user removed Cordis Plugin ${pluginId} from the personal plugin library.`)
+    return { ok: true, wasRunning }
+  }
+
+  /**
+   * Re-create every enabled library plugin from the persisted document, then
+   * activate its current version under the persisted authorization. Called
+   * once at boot so a restart restores the user's saved plugins.
+   */
+  private libraryMounting: Promise<void> | undefined
+
+  /**
+   * Re-create every enabled library plugin from the persisted document, then
+   * activate its current version under the persisted authorization. Called
+   * once at boot so a restart restores the user's saved plugins; concurrent
+   * calls share one in-flight mount.
+   */
+  async mountLibrary(): Promise<void> {
+    this.libraryMounting ??= this.doMountLibrary()
+    await this.libraryMounting
+  }
+
+  private async doMountLibrary(): Promise<void> {
+    try {
+      const home = this.resolved.libraryHome
+      if (home === undefined) return
+      const document = loadLibrary(home)
+      for (const record of document.plugins) {
+        // Every persisted plugin enters the registry so the inventory can
+        // show its library state; only the running states activate it.
+        if (this.registry.get(CordisDynamicPluginId(record.pluginId)) !== undefined) continue
+        const plugin = fromLibraryRecord(record)
+        this.registry.add(plugin)
+        await this.applyLibraryState(plugin, record.state)
+      }
+    } finally {
+      this.libraryMounting = undefined
+    }
+  }
 
   /**
    * Read one Session's Host-rich state for inspection and result rendering.
@@ -692,7 +829,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     pluginRunId: CordisDynamicPluginRunId,
     failure: DynamicCordisRenderFailure,
   ): Promise<null> {
-    const plugin = this.owned(agent, pluginId)
+    const plugin = this.managedPlugin(agent, pluginId)
     if (plugin?.run?.pluginRunId === pluginRunId) {
       const run = plugin.run
       const definition = plugin.packages.get(plugin.run.packageId)
@@ -726,7 +863,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     pluginRunId: CordisDynamicPluginRunId,
     failure: CordisErrorDetails,
   ): Promise<null> {
-    const plugin = this.owned(agent, pluginId)
+    const plugin = this.managedPlugin(agent, pluginId)
     const run = plugin?.run
     if (plugin !== undefined && run?.pluginRunId === pluginRunId) {
       this.steerGuardFailure(plugin, run, 'Client', failure)
@@ -777,7 +914,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     mode: CordisDynamicRunMode,
     allowActiveAttach = false,
   ): { ok: true } & ActivationPlan | { ok: false; response: Extract<DynamicCordisRunResponse, { ok: false }> } {
-    const plugin = this.owned(agent, pluginId)
+    const plugin = this.managedPlugin(agent, pluginId)
     if (plugin === undefined) return { ok: false, response: { ok: false, reason: 'plugin-missing', message: missingPluginMessage(pluginId) } }
     const definition = plugin.packages.get(packageId)
     if (definition === undefined) {
@@ -1236,6 +1373,93 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     return plugin?.sessionId === agent.id ? plugin : undefined
   }
 
+  /**
+   * A plugin the session agent may manage: one it owns, or one persisted in
+   * the personal library (the user's session manages their own library).
+   */
+  private managedPlugin(agent: Agent, pluginId: CordisDynamicPluginId): DynamicCordisPlugin | undefined {
+    const plugin = this.registry.get(pluginId)
+    if (plugin === undefined) return undefined
+    return plugin.sessionId === agent.id || plugin.libraryState !== undefined ? plugin : undefined
+  }
+
+  private libraryPlugin(pluginId: CordisDynamicPluginId): DynamicCordisPlugin | undefined {
+    const plugin = this.registry.get(pluginId)
+    return plugin?.libraryState === undefined ? undefined : plugin
+  }
+
+  /**
+   * Persist one plugin's current library state into the durable document,
+   * inserting the record on a fresh save or updating the existing one.
+   * @param home - configured library home.
+   * @param plugin - the plugin whose record is being persisted.
+   * @param state - library state to record.
+   */
+  private persistLibraryState(home: string, plugin: DynamicCordisPlugin, state: DynamicCordisLibraryState): void {
+    const document = loadLibrary(home)
+    const record = findLibraryPlugin(document, plugin.pluginId)
+    upsertLibraryPlugin(document, record === undefined
+      ? toLibraryRecord(plugin, state)
+      : {
+        ...record,
+        state,
+        ...plugin.currentPackageId === undefined ? {} : { currentPackageId: plugin.currentPackageId },
+      })
+    saveLibrary(home, document)
+    plugin.libraryState = state
+  }
+
+  /**
+   * Apply a library state to a running plugin: `off` stops it, while the
+   * running states re-activate the current version when stopped. `on-editable`
+   * keeps plugin-wide approval so future versions run without re-authorization;
+   * `frozen` narrows approval to the current version alone.
+   * @param plugin - the library-owned plugin being transitioned.
+   * @param state - target library state.
+   */
+  private async applyLibraryState(plugin: DynamicCordisPlugin, state: DynamicCordisLibraryState): Promise<void> {
+    if (state === 'off') {
+      if (plugin.run !== undefined) await this.retract(plugin)
+      return
+    }
+    plugin.clientVersionUpdatesApproved = state === 'on-editable'
+    if (plugin.run !== undefined || plugin.currentPackageId === undefined) return
+    const definition = plugin.packages.get(plugin.currentPackageId)
+    if (definition === undefined) return
+    const plan: ActivationPlan = { plugin, definition, mode: 'run' }
+    const attempt = this.createAttempt(plan)
+    plugin.nextPackageId = plugin.currentPackageId
+    plugin.latestRun = attempt
+    if (definition.clientCode === undefined) {
+      await this.activate(plan, undefined, false, attempt)
+      return
+    }
+    // A client-half library plugin runs under the stored real session: arm a
+    // no-approval run request so the browser orchestrator loads the client
+    // half (its reconcile pass picks up this pending attempt on connect).
+    const requestId = ApprovalRequestId(this.registry.mintApprovalRequestId())
+    attempt.approvalRequestId = requestId
+    attempt.requiresApproval = false
+    this.registry.armRequest(requestId, {
+      agentId: plugin.sessionId,
+      pluginId: plugin.pluginId,
+      packageId: definition.packageId,
+      pluginRunId: attempt.pluginRunId,
+      mode: 'run',
+      requiresApproval: false,
+    })
+    this.ctx.emit('cordis/request-run', {
+      requestId,
+      agentId: plugin.sessionId,
+      pluginId: plugin.pluginId,
+      packageId: definition.packageId,
+      mode: 'run',
+      name: definition.name,
+      purpose: definition.purpose,
+      requiresApproval: false,
+    })
+  }
+
   private requireGroup(): Fiber {
     this.group ??= this.rootCtx.plugin({ name: 'cordis-dynamic', apply: () => {} })
     return this.group
@@ -1248,6 +1472,52 @@ function missingFor(ctx: Context, run: DynamicCordisRun): string[] {
 
 function missingPluginMessage(id: CordisDynamicPluginId): string {
   return `no dynamic plugin "${id}" in this process — it may have been removed or lost on DSH restart`
+}
+
+function isLibraryState(value: unknown): value is DynamicCordisLibraryState {
+  return value === 'off' || value === 'on-editable' || value === 'frozen'
+}
+
+/** Serialize a registry plugin into a persisted library record. */
+function toLibraryRecord(plugin: DynamicCordisPlugin, state: DynamicCordisLibraryState): LibraryPluginRecord {
+  const definitions = [...plugin.packages.values()]
+  const latest = definitions[definitions.length - 1]
+  return {
+    pluginId: plugin.pluginId,
+    sessionId: plugin.sessionId,
+    name: latest?.name ?? plugin.pluginId,
+    purpose: latest?.purpose ?? '',
+    state,
+    ...plugin.currentPackageId === undefined ? {} : { currentPackageId: plugin.currentPackageId },
+    approvedClientPackages: [...plugin.approvedClientPackages],
+    clientVersionUpdatesApproved: plugin.clientVersionUpdatesApproved,
+    packages: definitions.map(definition => ({
+      packageId: definition.packageId,
+      name: definition.name,
+      purpose: definition.purpose,
+      ...definition.hostCode === undefined ? {} : { hostCode: definition.hostCode },
+      ...definition.clientCode === undefined ? {} : { clientCode: definition.clientCode },
+    })),
+  }
+}
+
+/** Rebuild a registry plugin from a persisted library record. */
+function fromLibraryRecord(record: LibraryPluginRecord): DynamicCordisPlugin {
+  return {
+    pluginId: CordisDynamicPluginId(record.pluginId),
+    sessionId: SessionId(record.sessionId),
+    packages: new Map(record.packages.map(pkg => [CordisDynamicPackageId(pkg.packageId), {
+      packageId: CordisDynamicPackageId(pkg.packageId),
+      name: pkg.name,
+      purpose: pkg.purpose,
+      ...pkg.hostCode === undefined ? {} : { hostCode: pkg.hostCode },
+      ...pkg.clientCode === undefined ? {} : { clientCode: pkg.clientCode },
+    }])),
+    approvedClientPackages: new Set(record.approvedClientPackages.map(id => CordisDynamicPackageId(id))),
+    clientVersionUpdatesApproved: record.clientVersionUpdatesApproved,
+    ...record.currentPackageId === undefined ? {} : { currentPackageId: CordisDynamicPackageId(record.currentPackageId) },
+    libraryState: record.state,
+  }
 }
 
 function errorDetails(error: unknown): CordisErrorDetails {

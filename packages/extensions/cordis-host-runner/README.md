@@ -11,6 +11,7 @@ English | [中文](README.zh.md)
 
 `dsh-cordis-host-runner` exposes runtime inspection and keeps process-local dynamic definitions available to programmatic callers and browser controls. Host halves run in a `node:vm` realm; browser halves use the Client runner and approval UI. Definitions disappear on restart. Agents discover APIs through `tool-cordis` and install persistent bundles through Plugin Manager; no model tool creates dynamic definitions.
 
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)
@@ -38,6 +39,7 @@ Mount this plugin for the inspection registry or programmatic dynamic-package li
 | Field | Default | Meaning |
 |---|---|---|
 | `vmTimeoutMs` | `5000` | Milliseconds the synchronous portion of a host half may run in the vm before evaluation is aborted |
+| `libraryHome` | — | Host home whose `plugins/library.json` persists saved plugins; when absent the personal library is disabled |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-cordis-host-runner) is the exhaustive source for every accepted field.
 
@@ -48,6 +50,7 @@ Programmatic callers use `define`, `run`, `stop`, and `undefine`; the browser pa
 ### What happens to definitions
 
 Definitions are session-scoped and process-local: other sessions read them as absent, and restart clears them. Historical logs retain tool arguments and receipts but do not restore the registry. Reloading a browser page requires another explicit run to load its Client half.
+
 
 ### Trust stance
 
@@ -73,6 +76,7 @@ The runner is built on two separations. **Registry and sandbox are one service.*
 |---|---|
 | [`src/index.ts`](src/index.ts) | Service entry: `Config`, registry wiring, lifecycle verbs, steer messages |
 | [`src/registry.ts`](src/registry.ts) | Definition store: plugin and package identities, run attempts, approval requests |
+| [`src/library-store.ts`](src/library-store.ts) | Durable personal-plugin library document: load, atomic save, field validation |
 | [`src/sandbox.ts`](src/sandbox.ts) | `node:vm` evaluation: globals, Node-API traps, define-time syntax precheck |
 | [`src/guard.ts`](src/guard.ts) | Registration boundary: schema normalization, the sandbox `ctx` façade, plugin-shape checks |
 | [`src/lifecycle.ts`](src/lifecycle.ts) | Starting a host half under the `cordis-dynamic` fiber group |
@@ -132,6 +136,7 @@ These limits define when the runner needs special care. They are current package
 - **A stale-success refusal leaves the request suspended** — when the answering page names a revision the registry has moved past, the resolution is refused (`accepted: false`) and the request stays answerable until another page answers or the caller cancels; the browser half does not read the acknowledgement.
 - **The run announcement carries no service declarations** — a browser half's declared `inject` is read from the plugin it returns in the page, so `cordis/request-run` carries metadata only, never code or service lists.
 - **`zod` is a runtime dependency of the generated Typert faces, not of `src`** — `./typert` and `./remote` resolve to unbundled `lib` files with a bare `import { z } from 'zod'`, so the package declares it even though nothing in `src` imports zod.
+- **The library is per-host and per-version authorized** — saved plugins persist under the host home and run at boot under the authorization recorded at save time; a corrupt document fails loudly rather than silently dropping plugins, and editing an `on-editable` plugin's source in place (as opposed to appending a new version) is deferred work.
 
 <a id="dev-note"></a>
 ### Dev Note
