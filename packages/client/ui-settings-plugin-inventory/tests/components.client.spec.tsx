@@ -504,7 +504,7 @@ describe('PluginInventorySettingsTab', () => {
     fireEvent.click(screen.getByRole('button', { name: en.ui }))
     expect(screen.getByRole('button', { name: en.ui }).getAttribute('aria-pressed')).toBe('true')
     expect(view.container.querySelectorAll('[data-plugin-scope="global"] li')).toHaveLength(1)
-    expect(screen.getByText('dormant')).toBeTruthy()
+    expect(screen.getAllByText('dormant')).toHaveLength(2) // title + identity
     expect(view.container.querySelector('[data-plugin-scope="global"] [data-plugin-category="ui"]')).toBeTruthy()
 
     // Category and query filters compose.
@@ -515,7 +515,7 @@ describe('PluginInventorySettingsTab', () => {
     expect(screen.queryByText(en.emptySearch)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: en.core }))
     expect(view.container.querySelectorAll('[data-plugin-scope="global"] li')).toHaveLength(2)
-    expect(screen.getByText('timer')).toBeTruthy()
+    expect(screen.getAllByText('timer')).toHaveLength(2) // title + identity
   })
 
   it('closes an expanded card whose entry leaves the filtered view', async () => {
