@@ -34,7 +34,7 @@ export interface PluginInventoryEntry {
   readonly enabled: boolean
   readonly fiberPhase: PluginFiberPhase
   /** Declared row classification; unrecognized or absent values project as `other`. */
-  readonly category: PluginCategory
+  readonly category?: PluginCategory
 }
 
 /** Effective enablement of one preset composition row. */

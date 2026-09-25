@@ -36,7 +36,7 @@ function props(
     resolveText,
     useClientSync: bindSnapshotSelector(createSnapshotStore<ClientEntryState>({ syncing: false, failures: [] })),
     retryClient: vi.fn(),
-    useSessions: () => 'session-a',
+    useSessions: () => 's',
     saveToLibrary: vi.fn(async () => ({ ok: true as const })),
     setLibraryState: vi.fn(async () => ({ ok: true as const })),
     removeFromLibrary: vi.fn(async () => ({ ok: true as const, wasRunning: false })),
@@ -726,7 +726,7 @@ describe('PluginInventorySettingsTab', () => {
           pluginId: 'enpr-1',
           name: 'prompt-enhance',
           purpose: 'Enhance prompts',
-          sessionId: 'session-a',
+          sessionId: 's',
           packageCount: 3,
           currentPackageId: 'pkg-3',
           phase: 'running',
@@ -735,7 +735,7 @@ describe('PluginInventorySettingsTab', () => {
           pluginId: 'tust-2',
           name: 'usage-stats',
           purpose: '',
-          sessionId: 'session-a',
+          sessionId: 's',
           packageCount: 1,
           phase: 'stopped',
         },
@@ -751,7 +751,7 @@ describe('PluginInventorySettingsTab', () => {
     expect(screen.getByText(en.stoppedTag)).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: `prompt-enhance, ${en.active}` }))
-    expect(screen.getByText(en.dynamicSession).nextElementSibling?.textContent).toBe('session-a')
+    expect(screen.getByText(en.dynamicSession).nextElementSibling?.textContent).toBe('s')
     expect(screen.getByText(en.dynamicVersions).nextElementSibling?.textContent).toBe('3')
     expect(screen.getByText(en.dynamicCurrent).nextElementSibling?.textContent).toBe('pkg-3')
     expect(screen.getByText(en.dynamicPurpose).nextElementSibling?.textContent).toBe('Enhance prompts')
@@ -788,27 +788,27 @@ describe('PluginInventorySettingsTab', () => {
     // at a time, so expand each card, act on it, then move to the next.
     fireEvent.click(screen.getByRole('button', { name: `free-plug, ${en.active}` }))
     fireEvent.click(screen.getByRole('button', { name: en.libSaveOn }))
-    expect(saveToLibrary).toHaveBeenCalledWith('session-a', 'free', 'on-editable')
+    expect(saveToLibrary).toHaveBeenCalledWith('s', 'free', 'on-editable')
     fireEvent.click(screen.getByRole('button', { name: en.libSaveOff }))
-    expect(saveToLibrary).toHaveBeenCalledWith('session-a', 'free', 'off')
+    expect(saveToLibrary).toHaveBeenCalledWith('s', 'free', 'off')
 
     fireEvent.click(screen.getByRole('button', { name: `off-plug, ${en.stoppedTag}` }))
     fireEvent.click(screen.getByRole('button', { name: en.libEnable }))
-    expect(setLibraryState).toHaveBeenCalledWith('session-a', 'lib-off', 'on-editable')
+    expect(setLibraryState).toHaveBeenCalledWith('s', 'lib-off', 'on-editable')
 
     fireEvent.click(screen.getByRole('button', { name: `edit-plug, ${en.active}` }))
     fireEvent.click(screen.getByRole('button', { name: en.libFreeze }))
-    expect(setLibraryState).toHaveBeenCalledWith('session-a', 'lib-edit', 'frozen')
+    expect(setLibraryState).toHaveBeenCalledWith('s', 'lib-edit', 'frozen')
     fireEvent.click(screen.getByRole('button', { name: en.libDisable }))
-    expect(setLibraryState).toHaveBeenCalledWith('session-a', 'lib-edit', 'off')
+    expect(setLibraryState).toHaveBeenCalledWith('s', 'lib-edit', 'off')
 
     fireEvent.click(screen.getByRole('button', { name: `frozen-plug, ${en.active}` }))
     fireEvent.click(screen.getByRole('button', { name: en.libUnfreeze }))
-    expect(setLibraryState).toHaveBeenCalledWith('session-a', 'lib-frozen', 'on-editable')
+    expect(setLibraryState).toHaveBeenCalledWith('s', 'lib-frozen', 'on-editable')
 
     // Removing calls the library verb for the currently open card.
     fireEvent.click(screen.getByRole('button', { name: en.libRemove }))
-    expect(removeFromLibrary).toHaveBeenCalledWith('session-a', 'lib-frozen')
+    expect(removeFromLibrary).toHaveBeenCalledWith('s', 'lib-frozen')
   })
 
   it('keeps the user-defined group visible with an empty hint when no plugin exists', async () => {

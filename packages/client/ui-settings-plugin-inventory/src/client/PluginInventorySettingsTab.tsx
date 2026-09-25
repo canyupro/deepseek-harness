@@ -60,7 +60,7 @@ export interface PluginInventorySettingsTabInjected {
   ) => Promise<{ ok: true; wasRunning: boolean } | { ok: false; reason: string; message: string }>
 }
 type PluginFiberPhase = PluginInventoryEntry['fiberPhase']
-type PluginCategory = PluginInventoryEntry['category']
+type PluginCategory = NonNullable<PluginInventoryEntry['category']>
 
 /** Category filter selections: every bucket plus the unfiltered default. */
 type CategoryFilter = 'all' | PluginCategory
@@ -270,21 +270,27 @@ function PhaseDot({ phase, t }: { readonly phase: DotPhase; readonly t: Translat
 
 /** Enablement states one inventory row can report. */
 type EnablementKind = 'enabled' | 'disabled' | 'conditional' | 'preset' | 'failed'
+/** Palette kinds for the dynamic runner's lifecycle phases and personal-library states. */
+type DynamicKind = 'running' | 'waiting' | 'inflight' | 'stopped' | 'lib-off' | 'lib-on-editable' | 'lib-frozen'
+type StateKind = EnablementKind | DynamicKind
 
-const TAG_TONES = {
-  disabled: 'neutral',
-  conditional: 'warning',
-  preset: 'info',
-  failed: 'danger',
-} as const satisfies Record<Exclude<EnablementKind, 'enabled'>, TagTone>
+  running: 'success',
+  waiting: 'warning',
+  inflight: 'info',
+  stopped: 'neutral',
+  'lib-off': 'neutral',
+  'lib-on-editable': 'info',
+  'lib-frozen': 'warning',
+} as const satisfies Record<Exclude<StateKind, 'enabled'>, TagTone>
 
 /** Enablement tag for the states that depart from the default; a plainly enabled row carries none. */
-function StateTag({ kind, label }: { readonly kind: EnablementKind; readonly label: string }): ReactNode {
+function StateTag({ kind, label }: { readonly kind: StateKind; readonly label: string }): ReactNode {
   return kind === 'enabled' ? null : <Tag tone={TAG_TONES[kind]}>{label}</Tag>
+}
 }
 
 /** Palette kind and localized label for one dynamic plugin phase. */
-function dynamicPhaseTag(phase: DynamicPluginRow['phase'], t: Translate): [kind: string, label: string] {
+function dynamicPhaseTag(phase: DynamicPluginRow['phase'], t: Translate): [kind: StateKind, label: string] {
   switch (phase) {
     case 'running': return ['running', t('active')]
     case 'waiting': return ['waiting', t('pending')]
@@ -302,7 +308,7 @@ function matchesCategory(entry: PluginInventoryEntry, filter: CategoryFilter): b
 /** Render the read-only plugin inventory: agent presets first, then the global plane. */
 export function PluginInventorySettingsTab({
   list, presetName, resolveText, t, useClientSync, retryClient,
-  saveToLibrary, setLibraryState, removeFromLibrary, useSessions,
+  saveToLibrary, setLibraryState, removeFromLibrary,
 }: PluginInventorySettingsTabProps): ReactNode {
   const clientSync = useClientSync(snapshot => snapshot)
   const sectionId = useId()
@@ -317,8 +323,6 @@ export function PluginInventorySettingsTab({
   const [dynamicOpen, setDynamicOpen] = useState<boolean | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [state, setState] = useState<ViewState>({ status: 'loading' })
-  const currentSessionId = useSessions(sessions => sessions.current)
-  const sessionId = currentSessionId
 
   /** Run one library verb and refresh the snapshot on success. */
   const runAction = async (action: () => Promise<unknown>): Promise<void> => {
@@ -530,11 +534,17 @@ export function PluginInventorySettingsTab({
   }
 
   /** Library state tag for one persisted plugin; null when not in the library. */
+  const LIBRARY_STATE_KINDS = {
+    off: 'lib-off',
+    'on-editable': 'lib-on-editable',
+    frozen: 'lib-frozen',
+  } as const satisfies Record<DynamicPluginLibraryState, DynamicKind>
   const libraryTag = (state: DynamicPluginLibraryState): ReactNode =>
-    <StateTag kind={`lib-${state}`} label={t(LIBRARY_STATE_KEYS[state])} />
+    <StateTag kind={LIBRARY_STATE_KINDS[state]} label={t(LIBRARY_STATE_KEYS[state])} />
 
   /** Action buttons managing one user-defined plugin's personal-library life. */
   const libraryActions = (row: DynamicPluginRow): ReactNode => {
+    const sessionId = row.sessionId as SessionId
     const requireSession = (): boolean => {
       if (sessionId !== undefined) return true
       setActionError(t('libNoSession'))
@@ -598,6 +608,9 @@ export function PluginInventorySettingsTab({
         key={key}
         rowKey={key}
         moduleName={row.name}
+        title={title}
+        description={row.purpose === '' ? undefined : row.purpose}
+        metadataError={undefined}
         entryId={row.pluginId}
         failed={row.phase === 'failed'}
         expanded={expanded}
