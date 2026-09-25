@@ -811,7 +811,7 @@ export function PluginInventorySettingsTab({
                 aria-controls={`${sectionId}-dynamic`}
                 onClick={() => { setDynamicOpen(!dynamicEffectiveOpen) }}
               >
-                <IconChevronDownOutline14 className={css.chevron} size={12} aria-hidden="true" />
+                <IconChevronDownOutlineRegular className={css.chevron} size={12} aria-hidden="true" />
                 <span className={css.groupTitle}>{t('dynamicTitle')}</span>
               </button>
             </div>

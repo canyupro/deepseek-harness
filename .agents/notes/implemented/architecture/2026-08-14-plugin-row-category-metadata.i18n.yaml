@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-14-plugin-row-category-metadata.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-14-plugin-row-category-metadata.md
-2026-08-14-plugin-row-category-metadata.md: bf272d9c31c2b7eb30eaa52795d38c4a7965bd29
-2026-08-14-plugin-row-category-metadata.zh.md: 034f2e8c38fbc595eeb3f4ac6b7587bd18219f70
+/agent-note-plugin-row-category-metadata-and-the-categorized-plugin-list:
+  en: 13bc63063c448bb6
+  zh: 95f1e7665a389d35
+/agent-note-plugin-row-category-metadata-and-the-categorized-plugin-list/problem:
+  en: 534c5e108236294d
+  zh: 6520068541a82455
+/agent-note-plugin-row-category-metadata-and-the-categorized-plugin-list/decision:
+  en: 5ae3677193940042
+  zh: 749e142b343370a3
+/agent-note-plugin-row-category-metadata-and-the-categorized-plugin-list/alternatives-considered:
+  en: de0b47bf728d3643
+  zh: b2a9ac6865a5fcce
+/agent-note-plugin-row-category-metadata-and-the-categorized-plugin-list/verification:
+  en: 21c6630b5090297e
+  zh: 0424ae05dc3161ff
+/agent-note-plugin-row-category-metadata-and-the-categorized-plugin-list/consequences:
+  en: 5bcb9a8cd054667b
+  zh: ae0071ca257e3596

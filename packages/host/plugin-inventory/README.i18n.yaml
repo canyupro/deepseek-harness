@@ -3,56 +3,56 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/host/plugin-inventory/README.md
 /:
-  en: 94ee43dddb605a56
-  zh: 1928b76cbc58ca5a
+  en: e5951db30228e58e
+  zh: 9edbfd2c1ed21735
 /deepseek-ai-dsh-host-plugin-inventory:
   en: f176d2f67d853178
   zh: b75160b74076f8ba
 /deepseek-ai-dsh-host-plugin-inventory/summary:
-  en: 30ac03ff33731529
-  zh: a166cd4942b3a912
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription:
-  en: 754e2250084b1bdf
-  zh: d354c5ccb572184b
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription/table-of-contents:
+  en: 2e31893f001e9b61
+  zh: 4322806de6905402
+/deepseek-ai-dsh-host-plugin-inventory/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription/use-this-package:
+/deepseek-ai-dsh-host-plugin-inventory/use-this-package:
   en: 10bbb42c37ba25d2
   zh: d628b1c9db7847e4
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription/use-this-package/what-a-snapshot-contains:
+/deepseek-ai-dsh-host-plugin-inventory/use-this-package/what-a-snapshot-contains:
   en: f1a581b05ace3f23
   zh: d6b49e287cfdac72
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription/use-this-package/per-preset-compositions:
+/deepseek-ai-dsh-host-plugin-inventory/use-this-package/per-preset-compositions:
   en: dfc89b14d4c0d21e
   zh: 062b233951ed157b
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription/use-this-package/what-you-can-and-cannot-do-with-it:
+/deepseek-ai-dsh-host-plugin-inventory/use-this-package/user-defined-dynamic-plugins:
+  en: dcc2558dd997ceb5
+  zh: 2466fcfbf2a16bba
+/deepseek-ai-dsh-host-plugin-inventory/use-this-package/what-you-can-and-cannot-do-with-it:
   en: 387f87777eef7ec5
   zh: badcd90c8840f870
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription/understand-the-implementation:
+/deepseek-ai-dsh-host-plugin-inventory/understand-the-implementation:
   en: 42b15ac6321706aa
   zh: 4ed0861911abaf5d
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription/understand-the-implementation/design-concept:
-  en: 48a7d7ce9170c859
-  zh: 21a44bf23d9c5c89
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription/understand-the-implementation/the-phase-mapping:
+/deepseek-ai-dsh-host-plugin-inventory/understand-the-implementation/design-concept:
+  en: 147e832ee73038c3
+  zh: d636250317b09e1f
+/deepseek-ai-dsh-host-plugin-inventory/understand-the-implementation/the-phase-mapping:
   en: 67fd54c8c49f6dbc
   zh: f6743f8f5c34b886
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription/understand-the-implementation/source-map:
-  en: 29edd9f9505d1bd1
-  zh: c1ddee8e221ac8f8
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription/further-exploration:
+/deepseek-ai-dsh-host-plugin-inventory/understand-the-implementation/source-map:
+  en: c6659d1b09d14a11
+  zh: 0fdde67d895daf56
+/deepseek-ai-dsh-host-plugin-inventory/further-exploration:
   en: 47de2da39cf6aefa
   zh: c7e945dcba775177
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription/model-experience:
+/deepseek-ai-dsh-host-plugin-inventory/model-experience:
   en: c3e5d5439c1a56fe
   zh: 32804643402d54ea
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription/model-experience/kv-cache-effect:
+/deepseek-ai-dsh-host-plugin-inventory/model-experience/kv-cache-effect:
   en: ca75c51c89c2c9b0
   zh: de54f3467ef3b9be
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription/known-limitations-and-deferred-work:
-  en: 6c1380959d4f5b13
-  zh: dab0c5c64b88a273
-/head-clients-can-call-plugininventory-list-to-display-the-host-s-current-plugins-in-load-order-including-each-entry-s-identifier-module-specifier-effective-enablement-live-phase-available-display-text-and-declared-category-projected-from-the-entry-s-static-category-metadata-core-extension-ui-other-with-an-absent-or-unrecognized-value-landing-in-other-deployments-with-an-agent-preset-roster-also-report-each-preset-s-metadata-health-and-flattened-plugin-composition-without-a-roster-preset-data-is-absent-each-response-is-a-point-in-time-read-only-snapshot-for-display-and-diagnostics-it-cannot-mutate-plugins-and-provides-no-history-or-change-subscription/known-limitations-and-deferred-work/dev-note:
+/deepseek-ai-dsh-host-plugin-inventory/known-limitations-and-deferred-work:
+  en: cd6a5f2d2b4d122b
+  zh: eeb2ff88773e1f0d
+/deepseek-ai-dsh-host-plugin-inventory/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 3bb0c20c93f16f98

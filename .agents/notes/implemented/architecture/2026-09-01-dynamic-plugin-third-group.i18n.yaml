@@ -1,6 +1,22 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-01-dynamic-plugin-third-group.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-01-dynamic-plugin-third-group.md
-2026-09-01-dynamic-plugin-third-group.md: 55ca0a2ca00d0b99cb8682424b970f4a3e07b878
-2026-09-01-dynamic-plugin-third-group.zh.md: 47a514cf54085a75d642a6b4aa8b1a64a169a683
+/agent-note-user-defined-dynamic-plugins-in-the-plugin-list:
+  en: 71372d12b0877b06
+  zh: 2c2888ac9166385b
+/agent-note-user-defined-dynamic-plugins-in-the-plugin-list/problem:
+  en: 0d9750a0e86e70ba
+  zh: d8d948a44b820d37
+/agent-note-user-defined-dynamic-plugins-in-the-plugin-list/decision:
+  en: b1ad20ad84060d93
+  zh: aebbc3ee23e9afd0
+/agent-note-user-defined-dynamic-plugins-in-the-plugin-list/alternatives-considered:
+  en: a5c68534e6c69700
+  zh: 72379ee2d8706002
+/agent-note-user-defined-dynamic-plugins-in-the-plugin-list/verification:
+  en: fcfb5738b856e26f
+  zh: 64eb0839c795fca3
+/agent-note-user-defined-dynamic-plugins-in-the-plugin-list/consequences:
+  en: b4d570a2e0950b52
+  zh: 3d3f16c689944107

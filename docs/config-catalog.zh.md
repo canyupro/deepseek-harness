@@ -749,13 +749,15 @@ export interface ToolResultPruneConfig {
 ## `@deepseek-ai/dsh-cordis-host-runner`
 
 - `inject`: `tools`
-- `source`: [`packages/extensions/cordis-host-runner/src/index.ts:93`](../packages/extensions/cordis-host-runner/src/index.ts)
+- `source`: [`packages/extensions/cordis-host-runner/src/index.ts:98`](../packages/extensions/cordis-host-runner/src/index.ts)
 
 ```ts config-catalog
 /** Runner configuration. */
 export interface Config {
   /** Maximum synchronous VM evaluation time in milliseconds. */
   vmTimeoutMs?: number
+  /** Host home persisting saved plugins under `plugins/library.json`. */
+  libraryHome?: string
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-cordis-host-runner -->

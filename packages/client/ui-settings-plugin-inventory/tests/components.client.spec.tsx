@@ -106,7 +106,8 @@ async function renderReady(
   snapshot: Snapshot = SNAPSHOT,
   overrides: Partial<Pick<PluginInventorySettingsTabProps, 'useSessions' | 'saveToLibrary' | 'setLibraryState' | 'removeFromLibrary'>> = {},
 ): Promise<ReturnType<typeof render>> {
-  const view = render(<PluginInventorySettingsTab {...props(async () => snapshot, preset => preset.name ?? preset.id, overrides)} />)
+  const view = render(<PluginInventorySettingsTab
+    {...props(async () => snapshot, preset => preset.name ?? preset.id, undefined, overrides)} />)
   await screen.findByRole('searchbox', { name: en.search })
   return view
 }
@@ -141,7 +142,8 @@ describe('PluginInventorySettingsTab', () => {
     for (const [index, [moduleName, title]] of names.entries()) {
       for (const fromManifest of [false, true]) {
         const entryId = `include:short-${String(index)}-${String(fromManifest)}`
-        const card = screen.getByRole('button', { name: `${title}, ${entryId}, Enabled` })
+        const categorySegment = scope === 'global' ? 'Other plugins, ' : ''
+        const card = screen.getByRole('button', { name: `${title}, ${categorySegment}${entryId}, Enabled` })
         if (fromManifest) {
           expect(document.getElementById(card.getAttribute('aria-describedby')!)?.textContent).toBe('Package description.')
         }
@@ -155,7 +157,9 @@ describe('PluginInventorySettingsTab', () => {
       target: { value: '@deepseek-ai/dsh-tool-subagent' },
     })
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
-    expect(screen.getAllByRole('button', { name: /^tool-subagent, include:short-0-/ })).toHaveLength(2)
+    expect(screen.getAllByRole('button', {
+      name: scope === 'global' ? /^tool-subagent, Other plugins, include:short-0-/ : /^tool-subagent, include:short-0-/,
+    })).toHaveLength(2)
   })
 
   it('keeps authored locale titles verbatim when they resemble module names', async () => {
@@ -168,10 +172,10 @@ describe('PluginInventorySettingsTab', () => {
     const view = render(<PluginInventorySettingsTab {...pageProps} />)
     await screen.findByRole('searchbox', { name: en.search })
     fireEvent.click(globalToggle())
-    expect(screen.getByRole('button', { name: 'dsh-Navigation, include:navigation, Enabled' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'dsh-Navigation, Other plugins, include:navigation, Enabled' })).toBeTruthy()
     locale.setLocale('zh')
     view.rerender(<PluginInventorySettingsTab {...pageProps} />)
-    expect(screen.getByRole('button', { name: 'dsh-导航, include:navigation, 已启用' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'dsh-导航, 其他插件, include:navigation, 已启用' })).toBeTruthy()
   })
 
   it('localizes global and preset metadata at render time while preserving identities and query state', async () => {
@@ -203,7 +207,8 @@ describe('PluginInventorySettingsTab', () => {
     const view = render(<PluginInventorySettingsTab {...pageProps} />)
     await screen.findByRole('searchbox', { name: en.search })
     fireEvent.click(globalToggle())
-    const global = screen.getByRole('button', { name: 'Navigation, include:global-navigation, Enabled' })
+    fireEvent.click(presetToggle())
+    const global = screen.getByRole('button', { name: 'Navigation, Other plugins, include:global-navigation, Enabled' })
     const preset = screen.getByRole('button', { name: 'Session runner, include:preset-runner, Enabled' })
     expect(document.getElementById(global.getAttribute('aria-describedby')!)?.textContent).toBe('Global navigation controls')
     expect(document.getElementById(preset.getAttribute('aria-describedby')!)?.textContent).toBe('Run per session')
@@ -218,7 +223,7 @@ describe('PluginInventorySettingsTab', () => {
 
     locale.setLocale('zh')
     view.rerender(<PluginInventorySettingsTab {...pageProps} />)
-    expect(screen.getByRole('button', { name: '导航, include:global-navigation, 已启用' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '导航, 其他插件, include:global-navigation, 已启用' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '会话执行器, include:preset-runner, 已启用' })).toBeTruthy()
     expect(screen.getByText('全局导航控件')).toBeTruthy()
     expect(screen.getByText('运行会话命令')).toBeTruthy()
@@ -228,7 +233,7 @@ describe('PluginInventorySettingsTab', () => {
     for (const query of ['导航', '全局导航控件', '@acme/navigation', 'include:global-navigation']) {
       fireEvent.change(search, { target: { value: query } })
       expect(screen.getAllByRole('listitem')).toHaveLength(1)
-      expect(screen.getByRole('button', { name: '导航, include:global-navigation, 已启用' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: '导航, 其他插件, include:global-navigation, 已启用' })).toBeTruthy()
     }
     fireEvent.change(search, { target: { value: '运行会话命令' } })
     expect(screen.getAllByRole('listitem')).toHaveLength(1)
@@ -264,28 +269,30 @@ describe('PluginInventorySettingsTab', () => {
     const { locale, pageProps } = localizedProps(list)
     const view = render(<PluginInventorySettingsTab {...pageProps} />)
     await screen.findByRole('searchbox', { name: en.search })
-    if (scope === 'global') fireEvent.click(globalToggle())
-    expect(screen.getByRole('button', { name: 'sidebar/navigation, include:navigation, Enabled' })).toBeTruthy()
+    fireEvent.click(scope === 'global' ? globalToggle() : presetToggle())
+    const cat = scope === 'global' ? 'Other plugins, ' : ''
+    expect(screen.getByRole('button', { name: `sidebar/navigation, ${cat}include:navigation, Enabled` })).toBeTruthy()
     expect(screen.getByText('Navigation description.')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'English title, include:commands, Enabled' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: `English title, ${cat}include:commands, Enabled` })).toBeTruthy()
     expect(screen.getByText('Package description.')).toBeTruthy()
-    const theme = screen.getByRole('button', { name: '@acme/dsh-theme, include:theme, Enabled' })
+    const theme = screen.getByRole('button', { name: `@acme/dsh-theme, ${cat}include:theme, Enabled` })
     expect(theme.getAttribute('aria-describedby')).toBeNull()
     expect(screen.queryByText('中文主题说明。')).toBeNull()
 
     locale.setLocale('zh')
     view.rerender(<PluginInventorySettingsTab {...pageProps} />)
+    const catZh = scope === 'global' ? '其他插件, ' : ''
     for (const [name, description] of [
-      ['sidebar/navigation, include:navigation, 已启用', 'Navigation description.'],
-      ['English title, include:commands, 已启用', '中文命令说明。'],
-      ['主题插件, include:theme, 已启用', '中文主题说明。'],
+      [`sidebar/navigation, ${catZh}include:navigation, 已启用`, 'Navigation description.'],
+      [`English title, ${catZh}include:commands, 已启用`, '中文命令说明。'],
+      [`主题插件, ${catZh}include:theme, 已启用`, '中文主题说明。'],
     ] as const) {
       const card = screen.getByRole('button', { name })
       expect(screen.getByText(description)).toBeTruthy()
       expect(document.getElementById(card.getAttribute('aria-describedby')!)?.textContent).toBe(description)
     }
     expect(screen.queryByText('Package description.')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '主题插件, include:theme, 已启用' }))
+    fireEvent.click(screen.getByRole('button', { name: `主题插件, ${catZh}include:theme, 已启用` }))
     expect(view.container.querySelector('[data-loader-entry]')?.textContent).toBe('include:theme')
     expect(screen.getByText(zh.moduleLabel).nextElementSibling?.textContent).toBe('@acme/dsh-theme/client')
 
@@ -296,7 +303,7 @@ describe('PluginInventorySettingsTab', () => {
     expect(screen.getByText(en.emptySearch)).toBeTruthy()
     fireEvent.change(screen.getByRole('searchbox', { name: en.search }), { target: { value: '@acme/dsh-theme/client' } })
     expect(screen.getAllByRole('listitem')).toHaveLength(1)
-    expect(screen.getByRole('button', { name: '@acme/dsh-theme, include:theme, Enabled' }).getAttribute('aria-describedby')).toBeNull()
+    expect(screen.getByRole('button', { name: `@acme/dsh-theme, ${cat}include:theme, Enabled` }).getAttribute('aria-describedby')).toBeNull()
     expect(list).toHaveBeenCalledOnce()
   })
 
@@ -310,7 +317,7 @@ describe('PluginInventorySettingsTab', () => {
     })
     fireEvent.click(globalToggle())
     expect(screen.getByText(en.metadataError.replace('{error}', error))).toBeTruthy()
-    const card = screen.getByRole('button', { name: 'legacy, Disabled' })
+    const card = screen.getByRole('button', { name: 'legacy, Other plugins, include:legacy, Disabled' })
     expect(card).toHaveProperty('disabled', false)
     expect(card.closest('li')?.getAttribute('data-failed')).toBeNull()
     fireEvent.click(card)
@@ -736,6 +743,7 @@ describe('PluginInventorySettingsTab', () => {
     } as unknown as Snapshot)
 
     const toggle = screen.getByRole('button', { name: (name: string) => name.startsWith(en.dynamicTitle) })
+    fireEvent.click(toggle)
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     expect(view.container.querySelector('[data-dynamic-count]')?.getAttribute('data-dynamic-count')).toBe('2')
 
@@ -773,6 +781,9 @@ describe('PluginInventorySettingsTab', () => {
     } as unknown as Snapshot
     await renderReady(snapshot, { saveToLibrary, setLibraryState, removeFromLibrary })
 
+    // The group starts collapsed; open it before acting on the cards.
+    fireEvent.click(screen.getByRole('button', { name: (name: string) => name.startsWith(en.dynamicTitle) }))
+
     // Action buttons live in the expanded card details; only one card is open
     // at a time, so expand each card, act on it, then move to the next.
     fireEvent.click(screen.getByRole('button', { name: `free-plug, ${en.active}` }))
@@ -804,6 +815,7 @@ describe('PluginInventorySettingsTab', () => {
     await renderReady({ entries: [], agentPresets: [] } as unknown as Snapshot)
 
     const toggle = screen.getByRole('button', { name: (name: string) => name.startsWith(en.dynamicTitle) })
+    fireEvent.click(toggle)
     expect(toggle).toBeTruthy()
     expect(screen.getByText(en.dynamicEmpty)).toBeTruthy()
     fireEvent.click(toggle)

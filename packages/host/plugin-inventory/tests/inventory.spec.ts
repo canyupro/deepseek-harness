@@ -7,13 +7,9 @@ import { Context, FiberState, type Plugin } from '@deepseek-ai/cordis'
 import { PluginPackages, readPluginMeta, type RuntimeResolution } from '@deepseek-ai/dsh-app-boot'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
-<<<<<<< HEAD
 import type { AgentPresetRegistry } from '@deepseek-ai/dsh-agent-preset-registry'
-=======
-import type { AgentPresets } from '@deepseek-ai/dsh-agent-presets'
 // Type-only: pulls the dynamic runner Context augmentation for `ctx.provide`.
 import type {} from '@deepseek-ai/dsh-cordis-host-runner'
->>>>>>> ce7deb1d60 (wip: dynamic user-defined plugins — library state, inventory projection, settings UI)
 import PluginInventoryGateway from '../src/index.ts'
 
 const contexts: Context[] = []
