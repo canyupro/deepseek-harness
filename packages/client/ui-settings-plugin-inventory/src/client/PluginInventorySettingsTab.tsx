@@ -276,6 +276,10 @@ type DynamicKind = 'running' | 'waiting' | 'inflight' | 'stopped' | 'lib-off' | 
 type StateKind = EnablementKind | DynamicKind
 
 const TAG_TONES = {
+  disabled: 'neutral',
+  conditional: 'warning',
+  preset: 'info',
+  failed: 'danger',
   running: 'success',
   waiting: 'warning',
   inflight: 'info',
