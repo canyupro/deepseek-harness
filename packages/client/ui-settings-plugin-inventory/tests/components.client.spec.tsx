@@ -207,7 +207,6 @@ describe('PluginInventorySettingsTab', () => {
     const view = render(<PluginInventorySettingsTab {...pageProps} />)
     await screen.findByRole('searchbox', { name: en.search })
     fireEvent.click(globalToggle())
-    fireEvent.click(presetToggle())
     const global = screen.getByRole('button', { name: 'Navigation, Other plugins, include:global-navigation, Enabled' })
     const preset = screen.getByRole('button', { name: 'Session runner, include:preset-runner, Enabled' })
     expect(document.getElementById(global.getAttribute('aria-describedby')!)?.textContent).toBe('Global navigation controls')
@@ -269,7 +268,7 @@ describe('PluginInventorySettingsTab', () => {
     const { locale, pageProps } = localizedProps(list)
     const view = render(<PluginInventorySettingsTab {...pageProps} />)
     await screen.findByRole('searchbox', { name: en.search })
-    fireEvent.click(scope === 'global' ? globalToggle() : presetToggle())
+    if (scope === 'global') fireEvent.click(globalToggle())
     const cat = scope === 'global' ? 'Other plugins, ' : ''
     expect(screen.getByRole('button', { name: `sidebar/navigation, ${cat}include:navigation, Enabled` })).toBeTruthy()
     expect(screen.getByText('Navigation description.')).toBeTruthy()
@@ -317,7 +316,7 @@ describe('PluginInventorySettingsTab', () => {
     })
     fireEvent.click(globalToggle())
     expect(screen.getByText(en.metadataError.replace('{error}', error))).toBeTruthy()
-    const card = screen.getByRole('button', { name: 'legacy, Other plugins, include:legacy, Disabled' })
+    const card = screen.getByRole('button', { name: 'legacy, Other plugins, Disabled' })
     expect(card).toHaveProperty('disabled', false)
     expect(card.closest('li')?.getAttribute('data-failed')).toBeNull()
     fireEvent.click(card)
@@ -448,10 +447,10 @@ describe('PluginInventorySettingsTab', () => {
     fireEvent.click(globalToggle())
 
     // An id equal to the title leaves both the card and its accessible name.
-    expect(screen.getByRole('button', { name: 'timer, Enabled' }).querySelector('code')).toBeNull()
+    expect(screen.getByRole('button', { name: 'timer, Other plugins, Enabled' }).querySelector('code')).toBeNull()
     // A composition id that matches the title once its include: marker drops is left out the same way.
-    expect(screen.getByRole('button', { name: 'hmr, Enabled' }).querySelector('code')).toBeNull()
-    const typert = screen.getByRole('button', { name: 'typert-registry, typert, Enabled' }).querySelector('code')
+    expect(screen.getByRole('button', { name: 'hmr, Other plugins, Enabled' }).querySelector('code')).toBeNull()
+    const typert = screen.getByRole('button', { name: 'typert-registry, Other plugins, typert, Enabled' }).querySelector('code')
     expect(typert?.textContent).toBe('typert')
     expect(typert?.getAttribute('title')).toBe('typert')
   })
@@ -470,13 +469,13 @@ describe('PluginInventorySettingsTab', () => {
     // Rows the presets took over sit inline, marked instead of plainly disabled.
     expect(screen.getAllByText(en.presetEnabledTag)).toHaveLength(2)
 
-    fireEvent.click(screen.getByRole('button', { name: 'tool-bash, Extended system, bash-host, Enabled via presets' }))
+    fireEvent.click(screen.getByRole('button', { name: 'tool-bash, Extended system, bash-host, Via presets' }))
     expect(screen.getByText(en.presetProvidedDetail)).toBeTruthy()
     expect(screen.getByText(en.enabledIn)).toBeTruthy()
     expect(screen.getByText('标准模式 · ptc')).toBeTruthy()
 
     // The failed global card reports its runtime state.
-    fireEvent.click(screen.getByRole('button', { name: 'telemetry, Other plugins, telemetry, Failed' }))
+    fireEvent.click(screen.getByRole('button', { name: 'telemetry, Other plugins, Failed' }))
     expect(screen.getByText('Failed to start')).toBeTruthy()
 
     // An enabled entry with no live fiber says so in its details, dot-free.
@@ -484,7 +483,7 @@ describe('PluginInventorySettingsTab', () => {
     expect(screen.getByText('Not running')).toBeTruthy()
 
     // A disabled row outside every preset stays plainly disabled.
-    fireEvent.click(screen.getByRole('button', { name: 'dormant, UI interface, dormant, Disabled' }))
+    fireEvent.click(screen.getByRole('button', { name: 'dormant, UI interface, Disabled' }))
     expect(screen.queryByText(en.presetProvidedDetail)).toBeNull()
 
     fireEvent.click(globalToggle())
@@ -511,7 +510,7 @@ describe('PluginInventorySettingsTab', () => {
     fireEvent.click(screen.getByRole('button', { name: en.ui }))
     expect(screen.getByRole('button', { name: en.ui }).getAttribute('aria-pressed')).toBe('true')
     expect(view.container.querySelectorAll('[data-plugin-scope="global"] li')).toHaveLength(1)
-    expect(screen.getAllByText('dormant')).toHaveLength(2) // title + identity
+    expect(screen.getAllByText('dormant')).toHaveLength(1) // title only: the id repeats the title
     expect(view.container.querySelector('[data-plugin-scope="global"] [data-plugin-category="ui"]')).toBeTruthy()
 
     // Category and query filters compose.
@@ -522,19 +521,19 @@ describe('PluginInventorySettingsTab', () => {
     expect(screen.queryByText(en.emptySearch)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: en.core }))
     expect(view.container.querySelectorAll('[data-plugin-scope="global"] li')).toHaveLength(2)
-    expect(screen.getAllByText('timer')).toHaveLength(2) // title + identity
+    expect(screen.getAllByText('timer')).toHaveLength(1) // title only: the id repeats the title
   })
 
   it('closes an expanded card whose entry leaves the filtered view', async () => {
     await renderReady()
     fireEvent.click(globalToggle())
-    const card = screen.getByRole('button', { name: 'dormant, UI interface, dormant, Disabled' })
+    const card = screen.getByRole('button', { name: 'dormant, UI interface, Disabled' })
     fireEvent.click(card)
     expect(card.getAttribute('aria-expanded')).toBe('true')
     fireEvent.click(screen.getByRole('button', { name: en.core }))
-    expect(screen.queryByRole('button', { name: 'dormant, UI interface, dormant, Disabled' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'dormant, UI interface, Disabled' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: en.ui }))
-    const restored = screen.getByRole('button', { name: 'dormant, UI interface, dormant, Disabled' })
+    const restored = screen.getByRole('button', { name: 'dormant, UI interface, Disabled' })
     expect(restored.getAttribute('aria-expanded')).toBe('false')
   })
 
@@ -600,7 +599,7 @@ describe('PluginInventorySettingsTab', () => {
     expect(screen.getByText(en.fromPreset).nextElementSibling?.textContent).toBe('Localized standard')
 
     fireEvent.click(globalToggle())
-    fireEvent.click(screen.getByRole('button', { name: 'tool-bash, Extended system, bash-host, Enabled via presets' }))
+    fireEvent.click(screen.getByRole('button', { name: 'tool-bash, Extended system, bash-host, Via presets' }))
     expect(screen.getByText('Localized standard · Localized ptc')).toBeTruthy()
   })
 
@@ -610,7 +609,7 @@ describe('PluginInventorySettingsTab', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'ptc' }))
 
     fireEvent.click(globalToggle())
-    fireEvent.click(screen.getByRole('button', { name: 'tool-bash, Extended system, bash-host, Enabled via presets' }))
+    fireEvent.click(screen.getByRole('button', { name: 'tool-bash, Extended system, bash-host, Via presets' }))
     fireEvent.click(screen.getByRole('button', { name: en.viewInPreset }))
     expect(screen.getByRole('button', { name: en.switcherLabel }).textContent)
       .toBe('标准模式 (default)')
@@ -662,10 +661,10 @@ describe('PluginInventorySettingsTab', () => {
     expect(globalToggle().getAttribute('aria-expanded')).toBe('true')
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
 
-    fireEvent.click(screen.getByRole('button', { name: 'hmr, Core system, hmr, Enabled' }))
+    fireEvent.click(screen.getByRole('button', { name: 'hmr, Core system, Enabled' }))
     expect(screen.getByText(en.runtime)).toBeTruthy()
     expect(view.container.querySelector('[data-loader-entry]')?.textContent).toBe('hmr')
-    fireEvent.click(screen.getByRole('button', { name: 'off, Other plugins, off, Disabled' }))
+    fireEvent.click(screen.getByRole('button', { name: 'off, Other plugins, Disabled' }))
     expect(screen.getAllByText(en.moduleLabel).length).toBeGreaterThan(0)
     expect(screen.queryByText(en.runtime)).toBeNull()
   })

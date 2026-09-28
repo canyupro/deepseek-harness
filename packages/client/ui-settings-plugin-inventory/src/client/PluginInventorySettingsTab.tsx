@@ -115,7 +115,8 @@ function idAddsToTitle(entryId: string | null, title: string): entryId is string
   return entryId !== null && entrySubtitle(entryId) !== title
 }
 
-/** Accessible card name: the title, the declared category when the row carries one, the complete entry id when the card shows one, then the enablement state. */
+/** Accessible card name: the title, the declared category when the row carries one,
+ * the complete entry id when the card shows one, then the enablement state. */
 function cardLabel(title: string, entryId: string | null, state: string, category?: string): string {
   const parts = [title, ...(category === undefined ? [] : [category])]
   if (idAddsToTitle(entryId, title)) parts.push(entryId)
@@ -274,6 +275,7 @@ type EnablementKind = 'enabled' | 'disabled' | 'conditional' | 'preset' | 'faile
 type DynamicKind = 'running' | 'waiting' | 'inflight' | 'stopped' | 'lib-off' | 'lib-on-editable' | 'lib-frozen'
 type StateKind = EnablementKind | DynamicKind
 
+const TAG_TONES = {
   running: 'success',
   waiting: 'warning',
   inflight: 'info',
@@ -286,7 +288,6 @@ type StateKind = EnablementKind | DynamicKind
 /** Enablement tag for the states that depart from the default; a plainly enabled row carries none. */
 function StateTag({ kind, label }: { readonly kind: StateKind; readonly label: string }): ReactNode {
   return kind === 'enabled' ? null : <Tag tone={TAG_TONES[kind]}>{label}</Tag>
-}
 }
 
 /** Palette kind and localized label for one dynamic plugin phase. */
