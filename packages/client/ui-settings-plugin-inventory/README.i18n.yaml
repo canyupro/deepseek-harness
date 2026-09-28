@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/ui-settings-plugin-inventory/README.md
 /:
-  en: 9121298d88fe8ea6
-  zh: 5da705491f951d0e
+  en: 9a26918954a879ba
+  zh: 97883fec4ad17359
 /deepseek-ai-dsh-client-ui-settings-plugin-inventory:
   en: 463eecf002ec0f54
   zh: b8dc6003ddccd14a
 /deepseek-ai-dsh-client-ui-settings-plugin-inventory/summary:
-  en: 25b24a602c4fa562
-  zh: d3f55d565e4caec8
+  en: 4340915dcf3c4e3b
+  zh: 07005a9e5aa34dc6
 /deepseek-ai-dsh-client-ui-settings-plugin-inventory/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -18,8 +18,8 @@
   en: 67637808e7940157
   zh: d4d0716ea4d33e4a
 /deepseek-ai-dsh-client-ui-settings-plugin-inventory/use-this-package/reading-a-card:
-  en: 0de09f037ecb089f
-  zh: 4ad39aa03c19c4c0
+  en: 5bf9435b37aba485
+  zh: 74c0b6f76d4c9620
 /deepseek-ai-dsh-client-ui-settings-plugin-inventory/use-this-package/the-preset-switcher:
   en: 84e5938329199a22
   zh: 6f5cfaac56433e8b
@@ -33,8 +33,8 @@
   en: e4792880c5916ce0
   zh: 4c8171a446dd153f
 /deepseek-ai-dsh-client-ui-settings-plugin-inventory/understand-the-implementation/rendering:
-  en: 779146e3d3732803
-  zh: 0dfafa328dfeda75
+  en: 5d5629e38ce220f7
+  zh: 5f3e572ac849d4b4
 /deepseek-ai-dsh-client-ui-settings-plugin-inventory/further-exploration:
   en: ae3819f0c5da95bd
   zh: 40972ab96d5c95e2
@@ -45,8 +45,8 @@
   en: ca75c51c89c2c9b0
   zh: de54f3467ef3b9be
 /deepseek-ai-dsh-client-ui-settings-plugin-inventory/known-limitations-and-deferred-work:
-  en: f417791e62f66e34
-  zh: 520576b4e33b75c0
+  en: e3dfe303b4e159f7
+  zh: 471e690bb6750f95
 /deepseek-ai-dsh-client-ui-settings-plugin-inventory/known-limitations-and-deferred-work/dev-note:
   en: 7516b7e39304e5b3
   zh: 8961c0cefb89ee12
