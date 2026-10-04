@@ -69,7 +69,6 @@ Fiber states map onto the public phase vocabulary, with `disposed` folding into 
 |---|---|
 | [`src/index.ts`](src/index.ts) | `PluginInventoryGateway`: the `pluginInventory` Remote service and the Loader projection |
 | [`src/types.ts`](src/types.ts) | Public payload types: `PluginInventoryEntry`, `PluginInventorySnapshot`, `PluginFiberPhase`, `PluginCategory`, `DynamicPluginEntry` |
-| [`src/invariant.ts`](src/invariant.ts) | Invariant companion (no runtime invariant; every snapshot projects Loader-owned state) |
 
 Typert generates the Host and Client Remote artifacts exposed by `./typert` and `./remote`.
 

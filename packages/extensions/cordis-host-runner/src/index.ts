@@ -101,6 +101,8 @@ export interface Config {
   vmTimeoutMs?: number
   /** Host home persisting saved plugins under `plugins/library.json`. */
   libraryHome?: string
+  /** Maximum wait for a valid Client inspect response in milliseconds. */
+  clientInspectTimeoutMs?: number
 }
 
 type ResolvedConfig = Required<Omit<Config, 'libraryHome'>> & { libraryHome: string | undefined }
@@ -140,6 +142,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   static Config: z<Config> = z.object({
     vmTimeoutMs: z.number().min(1).default(5000),
     libraryHome: z.string(),
+    clientInspectTimeoutMs: z.number().step(1).min(1).max(2_147_483_647).default(10_000),
   })
 
   private readonly rootCtx: Context
@@ -153,8 +156,8 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   constructor(ctx: Context, config: Config) {
     super(ctx, 'dynamicCordisRunner')
     this.rootCtx = ctx
-    this.resolved = { vmTimeoutMs: config.vmTimeoutMs ?? 5000, libraryHome: config.libraryHome }
-    this.inspectRegistry = new CordisInspectRegistryService(ctx)
+    this.resolved = config as ResolvedConfig
+    this.inspectRegistry = new CordisInspectRegistryService(ctx, this.resolved.clientInspectTimeoutMs)
     // Boot auto-mount: re-create every enabled library plugin so a restart
     // restores the user's saved plugins with their persisted authorization.
     ctx.effect(() => {
@@ -526,11 +529,12 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   }
 
   /**
-   * Claim one pending Client inspect query with its live result.
+   * Submit a Client inspect result or failure for a pending query.
    * @param agent - Session that owns the query.
    * @param requestId - exact pending query identity.
    * @param resolution - provider result or structured refusal.
-   * @returns whether this answer won the query.
+   * @returns acknowledgement with accepted true only for a valid success that settles the query;
+   * pending-query failures return { accepted: false } and retain only the first diagnostic.
    */
   @Remote('resolveInspectQuery')
   resolveInspectQuery(
