@@ -447,6 +447,7 @@
     { "path": "./packages/jobs/jobs-local" },
     { "path": "./packages/jobs/tool-jobs" },
     { "path": "./packages/experimental/agent-team" },
+    { "path": "./packages/experimental/agent-team-llm-settings" },
     { "path": "./packages/experimental/agent-team-profile" },
     { "path": "./packages/experimental/inspector-profile" },
     { "path": "./packages/experimental/tool-agent-team" },

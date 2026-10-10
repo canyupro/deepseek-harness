@@ -1,0 +1,101 @@
+---
+description: "插件页上的 Agent Teams 子 LLM 路由设置卡片：允许清单、默认路由与按 teammate 名字的预设。"
+kind: "package-reference"
+---
+
+# @deepseek-ai/dsh-experimental-client-ui-agent-team-llm-settings
+
+[English](README.md) | 中文
+
+## 概述
+
+本包是 `@deepseek-ai/dsh-experimental-agent-team-llm-settings` 的浏览器半边。它在插件页上放一张可编辑的卡片，让用户选择 Agent Teams 的 teammate 可以跑在哪些 LLM 路由上、teammate 名字没有预设时使用哪条路由，以及每个 teammate 名字各用哪条路由。
+
+卡片编辑两层。**全局**层保持走 `ctx.configForms.get('agent-team-llm-settings')` 的部署级文档。**工作区**层编辑当前会话所在项目的文档 `<projectRoot>/.dsh/team.json`，通过 Host 的 `readTeamDocument` 与 `saveTeamDocument` 两个 Remote。两层承载同样的三样东西：队友可以运行的路由、默认路由与预设路由，以及一份固定编制，其中每个成员有名称、职责描述、开场指令、上下文模式、权限范围与路由。会话 cwd 找不到项目根时，工作区页签禁用。
+
+工作区文档是一层覆盖：它没有声明的字段继承全局层，保存时只写「原本已声明」或「用户改得与继承值不同」的字段。不写某个字段，就让它继续继承。
+
+路由可以从运行中的模型目录授权，也可以在没有提供方公布时手动填写，还能编辑与移除。目录已不再公布的存量路由仍然可见、可移除；任何路由的 reasoning effort 都可编辑——留空表示不记录，沿用模型默认值。
+
+全局层把编辑暂存起来，并作为**一次带 revision 校验的写入**提交，因此并发发生的设置变更会被拒绝而不是被合并。它拒绝保存任何 Host 会拒绝的文档：启用但没有允许路由、默认路由只给了一半、预设路由不在允许清单内，以及重复的预设名字。工作区层拒绝同样的路由问题，外加该文档 schema 自己的成员规则：名字缺失或格式不对、占用了保留名 `lead`、名字重复、缺少职责描述，以及只给提供方不给模型。
+
+## 目录
+
+- [使用本包](#use-this-package)
+- [理解实现](#understand-the-implementation)
+- [进一步探索](#further-exploration)
+- [模型体验](#model-experience)
+- [已知限制与延期工作](#known-limitations-and-deferred-work)
+
+-----
+
+<a id="use-this-package"></a>
+## 使用本包
+
+把它与 Host 包一起挂在 Web 或 Desktop 组合里。`@deepseek-ai/dsh-experimental-agent-team-profile` 已经同时挂载了两者。卡片出现在该 bundle 下的插件页，且仅在 Host 提供 `agent-team-llm-settings` 命名空间时出现。
+
+工作区层优先跟随主视图持有的会话，因为 Host 从该会话的 cwd 推导项目根。在没有持有主视图保留的场合——也就是设置页本身——它退回到最近更新的会话，因为任何会话要么解析出项目根要么没有，而解析出的文档路径会显示出来，使猜错可见。切到工作区页签会读取 `<projectRoot>/.dsh/team.json`；项目尚未存储该文档时从空文档开始编辑。页签会说明是哪个边界拦下的：没有会话可解析，或会话不属于任何项目。
+
+本包像其它实验性客户端那样自行挂载 Host 的 `agentTeamLlm` Remote 生成物，因此工作区层无需在发布包 `@deepseek-ai/dsh-api-remotes` 装配里登记。Host 包是 peer 依赖：未挂载时工作区页签只会得到一次读失败提示。
+
+模型候选项来自部署中运行中的 adapter 目录，因此卡片列出的正是这套安装能触达的 provider 与 model。目录已不再公布的存量路由仍然可见、可移除，而不会被静默丢弃。
+
+<a id="understand-the-implementation"></a>
+## 理解实现
+
+<details>
+<summary>实现细节——点击展开</summary>
+
+| 文件 | 职责 |
+|---|---|
+| [`src/client/index.ts`](src/client/index.ts) | 浏览器入口：Remote 生成物与挂载调用 |
+| [`src/client/mount.ts`](src/client/mount.ts) | 该生成物的 `$mount`、locale 字典与 `configForms.whileServed` 之后的 `plugins.item` 注册，以及成对的 disposer |
+| [`src/client/agent-team-llm-card-controller.ts`](src/client/agent-team-llm-card-controller.ts) | 每层一份暂存草稿、Host 规则校验、目录加载、工作区读取、带 revision 校验的保存 |
+| [`src/client/team-document.ts`](src/client/team-document.ts) | 工作区文档、成员规则，以及 `readTeamDocument` / `saveTeamDocument` 的 Remote 切片 |
+| [`src/client/AgentTeamLlmCard.tsx`](src/client/AgentTeamLlmCard.tsx) | 卡片外壳、作用域切换与唯一的保存页脚 |
+| [`src/client/AgentTeamLlmFields.tsx`](src/client/AgentTeamLlmFields.tsx) | 开关、已授权路由编辑器（可手填路由与 effort）、默认路由与预设行 |
+| [`src/client/AgentTeamLlmMembers.tsx`](src/client/AgentTeamLlmMembers.tsx) | 两层中的编制行，含每行的提示词、路由字段与其违反的规则 |
+
+控制器为每一层各保留一份暂存草稿，因此编辑工作区编制不会影响全局草稿。全局层通过 `ctx.configForms.get('agent-team-llm-settings')` 读取，并按同一个 revision 保存；工作区层通过两个 Remote 读写。`problemsOf` 与 Host 的路由校验保持一致，`agentTeamLlmMemberProblems` 与其成员规则一致；外壳会把两者折入 `invalid`，从而阻止保存。工作区保存会先问 `documentScope` 哪些可选字段是项目已声明或用户改过的，其余字段一律不写，让项目继续继承。
+
+`reasoningEffort` 属于相等性而不只是身份：`sameRoutes`、`sameRoles` 与 `sameAgentTeamLlmMember` 都比较它，因此只改 effort 的草稿也是 dirty，保存按钮保持可用。
+
+</details>
+
+-----
+
+<a id="further-exploration"></a>
+## 进一步探索
+
+- [Agent Teams 路由设置（Host）](../agent-team-llm-settings/README.zh.md)——本卡片编辑的文档、它的解析顺序与校验。
+- [Agent Teams 工具](../tool-agent-team/README.zh.md)——消费解析结果路由的模型工具面。
+- [实验性包](../README.zh.md)——孵化状态与发布规则。
+
+-----
+
+<a id="model-experience"></a>
+## 模型体验
+
+### 团队 LLM 路由卡片
+
+#### 模型看到什么
+
+什么都不加。本包只渲染产品用户界面；它不增加提示词文本、工具 schema 或工具结果。teammate 跑哪条路由由 Host 服务在创建时决定。
+
+#### Token 影响
+
+无。本卡片不贡献任何模型可见内容。
+
+#### KV 缓存影响
+
+自身无影响。本卡片改动的路由在下一个 teammate 被创建时生效；当该 teammate 的路由与 Lead 不同时，它就不再共享 Lead 的请求前缀。
+
+## 已知限制与延期工作
+
+<a id="known-limitations-and-deferred-work"></a>
+
+- **不能试跑路由**——卡片无法试用某条路由，因此已注册但不可达的 adapter 只有在 teammate 首次运行时才会暴露。
+- **工作区的默认路由无法清空**——Host 把「出现的」`defaultProvider`/`defaultModel` 读作两个非空字符串，因此工作区层用「省略整对」来表示未设置默认路由。已经设过默认路由的项目会一直能编辑它，除非直接改文档。
+- **会话回退是启发式的**——没有主视图保留时，工作区层解析最近更新的会话，那不一定是用户所指的那个会话。解析出的文档路径会显示出来，便于核对。
+- **成员数量上限由 Host 决定**——部署的 `maxMembers` 不在卡片读到的文档里，超限的编制会在写入时被拒，而不是在编辑器里被拦下。
+- **此处不校验成员路由是否在允许清单内**——成员的路由是否被授权，由 Host 在建人时判定。

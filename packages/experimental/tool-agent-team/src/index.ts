@@ -1,10 +1,25 @@
 /** Scoped model-facing tools for the opt-in Agent Teams runtime. */
 
+import { stat } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
+import { inspect } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-experimental-agent-team-llm-settings'
+import type { AgentTeamLlmSettingsValue, TeamMemberConfig } from '@deepseek-ai/dsh-experimental-agent-team-llm-settings'
+import { teamRouteFor } from '@deepseek-ai/dsh-experimental-agent-team-llm-settings'
+import type {} from '@deepseek-ai/dsh-llm'
 import { TeamTaskId } from '@deepseek-ai/dsh-experimental-agent-team'
 import type { TeamMemberView } from '@deepseek-ai/dsh-experimental-agent-team'
+import { parentAgentOptionsForDelegation } from '@deepseek-ai/dsh-subagent'
+import {
+  assertAllowedModelSelection,
+  hasDelegationModelRequest,
+  preflightChildLlmRoute,
+  requestedAgentOptions,
+} from '@deepseek-ai/dsh-tool-subagent/model-selection'
+import type { DelegationModelRequest } from '@deepseek-ai/dsh-tool-subagent/model-selection'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { InferValue, ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
 
@@ -31,6 +46,8 @@ export const Config: z<Config> = z.object({
 const POLICY = `Agent Teams is available in this session, but create teammates only when the user explicitly asks to use Agent Teams or teammates.
 
 The Team Lead and all teammates share the same working directory and filesystem. Edits are immediately visible to every member. Split write work into disjoint scopes, record expected write scopes on shared tasks, and use task dependencies when work must be ordered. Write-scope overlap is advisory, not a lock.
+
+Call spawn_team to create the whole configured roster in one call rather than one spawn_teammate call per member. It reports every member it created and every failure; a roster whose routes cannot all be resolved creates nobody.
 
 Prefer read/edit/write for file changes. If a file operation returns FS_STALE_VERSION, read the current file, rebase your intended change onto the new content, and retry. Bash, formatters, code generators, and scripts are not fully protected by the filesystem version guard; coordinate them explicitly and have the Lead review the final diff and run tests.
 
@@ -88,6 +105,25 @@ const SPAWN_VALUE_SCHEMA = {
   additionalProperties: false,
   properties: {
     member: { ...MEMBER_VIEW_SCHEMA, required: true },
+  },
+} as const
+
+/** One roster entry this call could not create, named so the caller can fix that entry alone. */
+const TEAM_ERROR_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    name: { type: 'string', required: true },
+    message: { type: 'string', required: true },
+  },
+} as const
+
+const SPAWN_TEAM_VALUE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    members: { type: 'array', required: true, items: MEMBER_VIEW_SCHEMA },
+    errors: { type: 'array', required: true, items: TEAM_ERROR_SCHEMA },
   },
 } as const
 
@@ -160,6 +196,123 @@ function callingAgent(agent: Agent | undefined, toolName: string): Agent {
   return agent
 }
 
+/**
+ * Render one caught failure as the message the model receives for that member.
+ * @param error - caught value from route resolution or member creation.
+ * @returns one bounded single-line description.
+ */
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  return inspect(error, { breakLength: Infinity, compact: true, depth: 4 })
+}
+
+/**
+ * Opening text of every teammate's first user message, so each member knows its
+ * own name and how to reach its peers before its first turn.
+ * @param name - durable teammate name.
+ * @returns the identity reminder block.
+ */
+function teammateReminder(name: string): string {
+  return `<system-reminder>
+You are teammate "${name}".
+Your Team Lead is named "lead".
+Use list_agents({}) to find your teammates and their names.
+To message your Team Lead, use send_message({ target: "lead", message: "..." }).
+To message another teammate, use send_message({ target: "<teammate name>", message: "..." }).
+</system-reminder>
+
+`
+}
+
+/** Child name whose presence in a directory marks that directory as the project root. */
+const WORKSPACE_ROOT_MARKER = '.git'
+
+/**
+ * Whether one path exists, treating a missing path or a non-directory ancestor
+ * as absent and propagating every other failure so an unreadable directory is
+ * never mistaken for an absent one.
+ * @param path - absolute path probed for the project-root marker.
+ * @param signal - tool-call cancellation for the probe.
+ * @returns whether the marker exists at this path.
+ */
+async function markerExists(path: string, signal: AbortSignal): Promise<boolean> {
+  signal.throwIfAborted()
+  try {
+    await stat(path)
+    return true
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code
+    /* v8 ignore next 3 -- a probe only fails this way under a permission or I/O fault the caller cannot fix. */
+    if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error
+    return false
+  }
+}
+
+/**
+ * Walk upward from the Lead's own working directory to the nearest project
+ * root. This is the directory whose team document applies to the Lead, so a
+ * Lead working in a subdirectory still reads the roster it shares with its
+ * peers.
+ * @param cwd - absolute working directory recorded on the Lead's session.
+ * @param signal - tool-call cancellation for the walk.
+ * @returns the project root, or undefined when the session has no working
+ * directory or no ancestor is marked as a project root.
+ */
+async function workspaceRootOf(cwd: string | undefined, signal: AbortSignal): Promise<string | undefined> {
+  if (cwd === undefined) return undefined
+  let current = resolve(cwd)
+  for (;;) {
+    if (await markerExists(join(current, WORKSPACE_ROOT_MARKER), signal)) return current
+    const parent = dirname(current)
+    if (parent === current) return undefined
+    current = parent
+  }
+}
+
+/**
+ * Resolve one teammate's child LLM route from the Team settings and the
+ * model-facing request. Settings that are absent or disabled contribute no
+ * preset, so the Lead's route stays the default. An explicit route is checked
+ * against the settings' allowed list, and every resolved route is validated
+ * through the live adapter before any child exists, because a teammate name is
+ * consumed permanently even when creation fails.
+ * @param ctx - Team tool context supplying the LLM runtime.
+ * @param lead - exact live Lead Agent whose route supplies inherited values.
+ * @param name - teammate name the Lead is creating.
+ * @param request - model-facing route fields from the tool call.
+ * @param settings - Team settings the caller resolved for the Lead's workspace.
+ * @param signal - tool-call cancellation for adapter-owned capability lookup.
+ * @returns child options, or undefined to inherit the Lead's route.
+ */
+async function resolveTeammateAgentOptions(
+  ctx: Context,
+  lead: Agent,
+  name: string,
+  request: DelegationModelRequest,
+  settings: AgentTeamLlmSettingsValue | undefined,
+  signal: AbortSignal,
+): Promise<AgentOptions | undefined> {
+  const configured = settings === undefined ? undefined : teamRouteFor(settings, name)
+  if (configured === undefined && !hasDelegationModelRequest(request)) return undefined
+
+  const parentOptions = parentAgentOptionsForDelegation(lead)
+  const agentOptions = requestedAgentOptions(parentOptions, configured, request, true)
+  if (agentOptions === undefined) return undefined
+  assertAllowedModelSelection(
+    settings?.enabled === true ? { routes: settings.allowedRoutes } : undefined,
+    parentOptions,
+    agentOptions,
+    request,
+  )
+  const llm = ctx.get('llm')
+  if (llm === undefined) {
+    throw new Error('spawn_teammate cannot resolve the teammate LLM route because the `llm` service is unavailable')
+  }
+  await preflightChildLlmRoute(llm, parentOptions, agentOptions, signal)
+  return agentOptions
+}
+
 /** Register the complete Team tool set in one exact Agent scope. */
 function install(agent: Agent, ctx: Context, config: Required<Config>): () => void {
   const scoped = agent.ctx
@@ -174,7 +327,7 @@ function install(agent: Agent, ctx: Context, config: Required<Config>): () => vo
 
     register(scoped.tools.register(defineTool({
       name: 'spawn_teammate',
-      description: 'Create one named, durable teammate. Only the Team Lead may call this tool.',
+      description: 'Create one named, durable teammate. Only the Team Lead may call this tool. Omit `provider`, `model`, and `reasoning_effort` to use the configured route for this teammate name, or the Lead\'s route when none is configured.',
       parameters: {
         name: { type: 'string', required: true, description: 'Unique lower-kebab-case teammate name.' },
         description: { type: 'string', required: true, description: 'Short description of the delegated responsibility.' },
@@ -184,31 +337,121 @@ function install(agent: Agent, ctx: Context, config: Required<Config>): () => vo
           enum: ['fresh', 'fork'],
           description: 'fresh starts without Lead history; fork inherits completed Lead turns. Defaults to fresh.',
         },
+        provider: {
+          type: 'string',
+          description: 'LLM provider route for the teammate. Supply together with model; omit both to use the configured route for this teammate name, or the Lead\'s route.',
+        },
+        model: {
+          type: 'string',
+          description: 'Model id interpreted by provider. Supply together with provider; omit both to use the configured route for this teammate name, or the Lead\'s route.',
+        },
+        reasoning_effort: {
+          type: 'string',
+          description: 'Adapter-owned reasoning effort for the teammate\'s effective route. Omit to use a compatible inherited effort or the selected model\'s default.',
+        },
       },
       output: jsonOutput(SPAWN_VALUE_SCHEMA),
       async execute(args, exec) {
         const agent = callingAgent(exec.agent, 'spawn_teammate')
         const context = args.context ?? 'fresh'
+        const agentOptions = await resolveTeammateAgentOptions(ctx, agent, args.name.trim(), {
+          ...args.provider === undefined ? {} : { provider: args.provider },
+          ...args.model === undefined ? {} : { model: args.model },
+          ...args.reasoning_effort === undefined ? {} : { reasoning_effort: args.reasoning_effort },
+        }, ctx.get('agentTeamLlm')?.current(), exec.signal)
         const result = await ctx.agentTeams.spawnTeammate(agent, {
           name: args.name,
           description: args.description,
           prompt: [
-            { type: 'text', text: `<system-reminder>
-You are teammate "${args.name.trim()}".
-Your Team Lead is named "lead".
-Use list_agents({}) to find your teammates and their names.
-To message your Team Lead, use send_message({ target: "lead", message: "..." }).
-To message another teammate, use send_message({ target: "<teammate name>", message: "..." }).
-</system-reminder>
-
-` },
+            { type: 'text', text: teammateReminder(args.name.trim()) },
             { type: 'text', text: args.prompt },
           ],
           context,
           provider: context === 'fork' ? config.forkProvider : config.freshProvider,
+          ...agentOptions === undefined ? {} : { agentOptions },
           signal: exec.signal,
         })
         return { member: modelMember(result.member) }
+      },
+    })))
+
+    register(scoped.tools.register(defineTool({
+      name: 'spawn_team',
+      description: 'Create the whole configured team roster in one call, using each member\'s own LLM route when it declares one. Team Lead only. Every selected member\'s route is resolved before any member is created, so an unusable roster creates nobody; the result lists each created member and each failure.',
+      parameters: {
+        only: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Member names to create. Omit to create every member of the roster. A name outside the roster is reported in errors without stopping the remaining members.',
+        },
+      },
+      output: jsonOutput(SPAWN_TEAM_VALUE_SCHEMA),
+      async execute(args, exec) {
+        const lead = callingAgent(exec.agent, 'spawn_team')
+        if (ctx.agentTeams.membership(lead).role !== 'lead') {
+          throw new Error('only the Team Lead can use spawn_team')
+        }
+        const teamLlm = ctx.get('agentTeamLlm')
+        if (teamLlm === undefined) {
+          throw new Error('spawn_team cannot read the team roster because the `agentTeamLlm` service is unavailable')
+        }
+        const settings = teamLlm.resolveFor(await workspaceRootOf(lead.session.header.cwd, exec.signal))
+        const only = args.only
+        const requested = only === undefined ? settings.members : settings.members.filter(member => only.includes(member.name))
+        const errors: Array<{ name: string; message: string }> = []
+        if (only !== undefined) {
+          for (const name of new Set(only)) {
+            if (!settings.members.some(member => member.name === name)) {
+              errors.push({ name, message: `"${name}" is not a member of the configured team roster` })
+            }
+          }
+        }
+        if (requested.length === 0 && errors.length === 0) {
+          throw new Error('spawn_team found no members in the configured team roster')
+        }
+
+        // A teammate name is consumed permanently even when creation fails, so
+        // every route resolves before the first member exists.
+        const planned: Array<{ member: TeamMemberConfig; agentOptions: AgentOptions | undefined }> = []
+        for (const member of requested) {
+          try {
+            planned.push({
+              member,
+              agentOptions: await resolveTeammateAgentOptions(ctx, lead, member.name, {
+                ...member.provider === undefined ? {} : { provider: member.provider },
+                ...member.model === undefined ? {} : { model: member.model },
+                ...member.reasoningEffort === undefined ? {} : { reasoning_effort: member.reasoningEffort },
+              }, settings, exec.signal),
+            })
+          } catch (error: unknown) {
+            errors.push({ name: member.name, message: errorMessage(error) })
+          }
+        }
+        if (planned.length !== requested.length) return { members: [], errors }
+
+        const members: Array<InferValue<typeof MEMBER_VIEW_SCHEMA>> = []
+        for (const { member, agentOptions } of planned) {
+          exec.signal.throwIfAborted()
+          try {
+            const result = await ctx.agentTeams.spawnTeammate(lead, {
+              name: member.name,
+              description: member.description,
+              prompt: [
+                { type: 'text', text: teammateReminder(member.name) },
+                { type: 'text', text: member.prompt ?? member.description },
+              ],
+              context: member.context,
+              provider: member.context === 'fork' ? config.forkProvider : config.freshProvider,
+              ...member.sandboxMode === undefined ? {} : { sandboxMode: member.sandboxMode },
+              ...agentOptions === undefined ? {} : { agentOptions },
+              signal: exec.signal,
+            })
+            members.push(modelMember(result.member))
+          } catch (error: unknown) {
+            errors.push({ name: member.name, message: errorMessage(error) })
+          }
+        }
+        return { members, errors }
       },
     })))
 

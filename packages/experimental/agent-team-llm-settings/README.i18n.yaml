@@ -1,0 +1,61 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/agent-team-llm-settings/README.md
+/:
+  en: de95e5bbe2a7f9a9
+  zh: 53021d52ecb09e03
+/deepseek-ai-dsh-experimental-agent-team-llm-settings:
+  en: 4c1b0cfe853f22ea
+  zh: b78d8e8946b5771f
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/overview:
+  en: f5117329003ad1ba
+  zh: d9d384a6f864a949
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/contents:
+  en: e5d5cd32e6f032a0
+  zh: 44ebe7ceeda3dff6
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/use-this-package:
+  en: a29fa37367e71675
+  zh: 04eedbdd796e50b5
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/use-this-package/the-workspace-document:
+  en: 9f0eadac47e8b9ea
+  zh: 4ceb7ca156a774ef
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/use-this-package/what-you-get:
+  en: 5aaad6533379ba28
+  zh: ae90d6e8257934e6
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/understand-the-implementation:
+  en: a23c08f0091185b6
+  zh: 3d1fa608503f69e0
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/further-exploration:
+  en: f28b0b1a6789c653
+  zh: 6e0e6163a5da1bc2
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/model-experience/team-llm-routes:
+  en: fa3fef72b6cfb55e
+  zh: 5e6d8b581c05f0ba
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/model-experience/team-llm-routes/what-the-model-sees:
+  en: b9df3e332c6293fa
+  zh: b0e3feb16911a000
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/model-experience/team-llm-routes/token-effect:
+  en: e8c4ac19170c3a79
+  zh: f827cb057f8e48b5
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/model-experience/team-llm-routes/kv-cache-effect:
+  en: 4d01e4e70fcff26f
+  zh: 582eb36532d2dd69
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/model-experience/fixed-roster:
+  en: da84bca43aa3aa33
+  zh: 5b19173cdb6ced18
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/model-experience/fixed-roster/what-the-model-sees:
+  en: 73dfa306c54b1641
+  zh: 3b7e5543a0711785
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/model-experience/fixed-roster/token-effect:
+  en: 7fcffedef96861c8
+  zh: cd43f9a757230652
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/model-experience/fixed-roster/kv-cache-effect:
+  en: e15ef48de9c3e8c8
+  zh: 3d4b446b192f274b
+/deepseek-ai-dsh-experimental-agent-team-llm-settings/known-limitations-and-deferred-work:
+  en: f90264d69efb6c03
+  zh: df28f053472eeb28

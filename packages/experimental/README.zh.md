@@ -45,7 +45,9 @@ kind: "package-group"
 | [`inspector`](inspector/README.zh.md) | 用于 Host 调试、Client Runtime 检查、网络采集与 Cordis 树的跨 realm CDP hub | `ctx.inspector` |
 | [`session-inspector`](session-inspector/README.zh.md) | 展示原始 Session 日志与 Chat 节点的 Sidebar 表格 | — |
 | [`inspector-profile`](inspector-profile/README.zh.md) | 用于 Session 日志与 Chat 节点检查的可选 Web 组合包 | — |
-| [`tool-agent-team`](tool-agent-team/README.zh.md) | 让模型创建、发消息与协调 teammate 的九个工具 | 按作用域注册工具到 `ctx.tools` |
+| [`tool-agent-team`](tool-agent-team/README.zh.md) | 让模型创建、发消息、协调 teammate，并一次创建整份已配置编制的十个工具 | 按作用域注册工具到 `ctx.tools` |
+| [`agent-team-llm-settings`](agent-team-llm-settings/README.zh.md) | 团队自有的 teammate LLM 路由：允许清单、默认路由与按名字的预设 | `ctx.agentTeamLlm` |
+| [`client-ui-agent-team-llm-settings`](client-ui-agent-team-llm-settings/README.zh.md) | 在插件页编辑团队 LLM 路由文档的卡片 | — |
 | [`webworker-packer`](webworker-packer/README.zh.md) | 构建浏览器 worker 预览所消费的 gzip 压缩虚拟文件系统（VFS）镜像 | 库与 CLI（命令行界面），不使用 ctx key |
 | [`webworker-runtime`](webworker-runtime/README.zh.md) | 在专用浏览器 worker 中运行 harness 插件树 | 库与 worker 入口，不使用 ctx key |
 

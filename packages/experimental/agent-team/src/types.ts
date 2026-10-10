@@ -1,6 +1,7 @@
 /** Public Agent Teams identities, durable records, and service request values. */
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { ReasoningEffortId } from '@deepseek-ai/dsh-llm/brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
@@ -148,6 +149,16 @@ declare module '@deepseek-ai/dsh-llm' {
   }
 }
 
+/**
+ * Sandbox scope one teammate is created with.
+ *
+ * Declared locally for the same reason as {@link TeammateAgentOptions}: the
+ * Team vocabulary is shared with the browser client, while the sandbox mode
+ * type lives in a Host-only module. Assignment at the Subagent continuation
+ * seam is what keeps the two declarations compatible.
+ */
+export type MemberSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
+
 /** Team-service deployment limits. */
 export interface Config {
   /** Maximum immutable teammate names retained by one Team. */
@@ -160,6 +171,32 @@ export interface Config {
   readonly maxMessageBytes?: number
   /** Maximum milliseconds allowed for Team-owned runtime disposal. */
   readonly disposalTimeoutMs?: number
+  /**
+   * Sandbox every teammate is created with. A teammate never inherits a wider
+   * scope than this from the Lead, so a team defaults to writing inside its own
+   * workspace; a deployment that genuinely needs more widens it here.
+   */
+  readonly memberSandboxMode?: MemberSandboxMode
+}
+
+/**
+ * Child LLM route overrides for one teammate.
+ *
+ * This declaration stays local because the Agent Teams vocabulary is shared
+ * with the browser client, while the child-agent option type lives in a
+ * Host-only module. `Roster.spawnAdmitted` passes a value of this type to the
+ * Subagent continuation seam, so that assignment is what keeps the two
+ * declarations compatible.
+ */
+export interface TeammateAgentOptions {
+  /** Provider route the teammate runs on. */
+  readonly provider?: string
+  /** Model id the selected provider interprets. */
+  readonly model?: string
+  /** Adapter-owned reasoning effort for the selected route. */
+  readonly reasoningEffort?: ReasoningEffortId
+  /** Maximum output tokens for each teammate conversation-model request. */
+  readonly maxTokens?: number
 }
 
 /** Input for creating one durable teammate. */
@@ -169,6 +206,18 @@ export interface SpawnTeammateRequest {
   readonly prompt: ContentBlock[]
   readonly context: 'fresh' | 'fork'
   readonly provider: string
+  /**
+   * Sandbox this teammate is created with. Omission uses the deployment's
+   * {@link Config.memberSandboxMode}.
+   */
+  readonly sandboxMode?: MemberSandboxMode
+  /**
+   * Child LLM route overrides, merged over the Lead's route when the teammate
+   * is created. Omission keeps the Lead's provider, model, and reasoning
+   * effort. Callers own route validation: the Team domain persists whatever it
+   * is given, so an unresolvable route surfaces when the child first runs.
+   */
+  readonly agentOptions?: TeammateAgentOptions
   readonly signal: AbortSignal
 }
 

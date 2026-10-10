@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -21,6 +21,8 @@ import { resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek'
 import { serialize } from '@deepseek-ai/dsh-llm-deepseek/src/serialize.ts'
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
+import AgentTeamLlmSettings from '../../agent-team-llm-settings/src/index.ts'
+import type { TeamMemberConfig } from '../../agent-team-llm-settings/src/types.ts'
 import TeamService from '../../agent-team/src/index.ts'
 import * as toolTeam from '../src/index.ts'
 
@@ -32,6 +34,7 @@ function serializeRequest(request: GenerateOptions) {
 const SIGNAL = new AbortController().signal
 const TOOL_NAMES = [
   'spawn_teammate',
+  'spawn_team',
   'send_message',
   'list_agents',
   'wait_agent',
@@ -63,7 +66,11 @@ afterEach(async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
-async function setup(script: ConstructorParameters<typeof MockAdapter>[0], legacyControl = false) {
+async function setup(
+  script: ConstructorParameters<typeof MockAdapter>[0],
+  legacyControl = false,
+  cwd?: string,
+) {
   const ctx = new Context()
   contexts.add(ctx)
   await mountAgentLoopTestDependencies(ctx)
@@ -80,8 +87,49 @@ async function setup(script: ConstructorParameters<typeof MockAdapter>[0], legac
   const fiber = await ctx.plugin(toolTeam)
   const adapter = new MockAdapter(script)
   ctx.llm.registerAdapter(['mock'], adapter)
-  const lead = await ctx.agentLoop.create(SessionId('tool-team-lead'), { provider: 'mock', model: 'mock' })
+  const lead = await ctx.agentLoop.create(SessionId('tool-team-lead'), { provider: 'mock', model: 'mock' },
+    cwd === undefined ? {} : { cwd })
   return { ctx, lead, fiber, adapter }
+}
+
+/**
+ * One project root holding the marker that identifies it, so the Lead's
+ * working directory can sit below it and still resolve to the same root.
+ * @returns the temporary project root.
+ */
+function projectRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-team-project-'))
+  roots.push(root)
+  mkdirSync(join(root, '.git'))
+  mkdirSync(join(root, 'packages', 'app'), { recursive: true })
+  return root
+}
+
+/** One `spawn_team` result row. */
+interface RosterResult {
+  members: Array<{ target: string }>
+  errors: Array<{ name: string; message: string }>
+}
+
+/**
+ * Stand in for the Host workspace resolver: return one fixed roster for every
+ * workspace root while recording each root the tool derived. The global layer
+ * stays the mounted service's own value.
+ * @param ctx - context holding the mounted Team settings service.
+ * @param members - roster the workspace layer contributes.
+ * @returns the workspace roots passed to the resolver, in call order.
+ */
+function installRoster(ctx: Context, members: readonly TeamMemberConfig[]): Array<string | undefined> {
+  const service = ctx.get('agentTeamLlm')
+  if (service === undefined) throw new Error('expected the mounted agentTeamLlm service')
+  const roots: Array<string | undefined> = []
+  Object.assign(service, {
+    resolveFor(root: string | undefined) {
+      roots.push(root)
+      return { ...service.current(), members }
+    },
+  })
+  return roots
 }
 
 function execute(
@@ -132,6 +180,29 @@ async function waitRunning(ctx: Context, id: SessionId): Promise<Agent> {
 
 async function waitNoAgent(ctx: Context, id: SessionId): Promise<void> {
   await vi.waitFor(() => { expect(ctx.agents.get(id)).toBeUndefined() }, { timeout: 5_000 })
+}
+
+/**
+ * Resolve one roster row to its durable Session identity.
+ * @returns the member Session id.
+ */
+function memberId(ctx: Context, lead: Agent, name: string): SessionId {
+  const member = ctx.agentTeams.listMembers(lead).find(member => member.name === name)
+  if (member === undefined) throw new Error(`the roster has no member named "${name}"`)
+  return member.id
+}
+
+/**
+ * Read the text blocks of one member's first user message from its log.
+ * @returns the reminder block followed by the initial task.
+ */
+async function initialPrompt(ctx: Context, id: SessionId): Promise<string[]> {
+  await using persisted = await ctx.sessionPersistence.open(id, 'read')
+  const { events } = await persisted.read()
+  const initial = events.findLast(event => event.type === 'user/message' && event.data.source.kind === 'user')
+  return initial?.type === 'user/message'
+    ? initial.data.content.flatMap(block => block.type === 'text' ? [block.text] : [])
+    : []
 }
 
 describe('dsh-tool-team', () => {
@@ -208,6 +279,118 @@ describe('dsh-tool-team', () => {
     const stored = await execute(ctx, lead, 'list_agents', {})
     expect(JSON.parse(text(stored))).toContainEqual(expect.objectContaining({ target: member.target, status: 'inactive' }))
     expect(ctx.agentTeams.listMembers(lead)[1]).toMatchObject({ id: childId, name: member.target, status: 'inactive' })
+  })
+
+  it('gives each teammate the LLM route the Lead selects and reports it in the roster', async () => {
+    const { ctx, lead } = await setup(['hang', 'hang'])
+    const spawned = await execute(ctx, lead, 'spawn_teammate', {
+      name: 'reviewer', description: 'review changes', prompt: 'review',
+      provider: 'mock', model: 'reviewer-model',
+    })
+    expect(spawned.isError).toBe(false)
+    const child = await waitRunning(ctx, spawnedChildId(ctx, lead, spawned))
+    expect(child.options).toMatchObject({ provider: 'mock', model: 'reviewer-model' })
+    const listed = JSON.parse(text(await execute(ctx, lead, 'list_agents', {}))) as Array<{ target: string; model?: string }>
+    expect(listed).toEqual([
+      expect.objectContaining({ target: 'lead', model: 'mock' }),
+      expect.objectContaining({ target: 'reviewer', model: 'reviewer-model' }),
+    ])
+  })
+
+  it('inherits the Lead route when the spawn names none', async () => {
+    const { ctx, lead } = await setup(['hang', 'hang'])
+    const spawned = await execute(ctx, lead, 'spawn_teammate', {
+      name: 'reviewer', description: 'review changes', prompt: 'review',
+    })
+    const child = await waitRunning(ctx, spawnedChildId(ctx, lead, spawned))
+    expect(child.options).toMatchObject({ provider: 'mock', model: 'mock' })
+  })
+
+  it.each([
+    ['a model without its provider', { model: 'reviewer-model' }, /`provider` and `model` must be supplied together/u],
+    ['a provider without its model', { provider: 'mock' }, /`provider` and `model` must be supplied together/u],
+    ['an empty model', { provider: 'mock', model: '' }, /`model` must be non-empty/u],
+    ['an unregistered provider', { provider: 'absent', model: 'reviewer-model' }, /absent/u],
+  ] as const)('rejects %s before creating a teammate', async (_case, route, expected) => {
+    const { ctx, lead } = await setup(['hang', 'hang'])
+    const spawned = await execute(ctx, lead, 'spawn_teammate', {
+      name: 'reviewer', description: 'review changes', prompt: 'review', ...route,
+    })
+    expect(spawned.isError).toBe(true)
+    expect(text(spawned)).toMatch(expected)
+    expect(ctx.agentTeams.listMembers(lead)).toHaveLength(1)
+    expect(ctx.agents.list()).toEqual([lead])
+  })
+
+  it('rejects a reasoning effort the selected route does not support', async () => {
+    const { ctx, lead } = await setup(['hang', 'hang'])
+    const spawned = await execute(ctx, lead, 'spawn_teammate', {
+      name: 'reviewer', description: 'review changes', prompt: 'review',
+      provider: 'mock', model: 'reviewer-model', reasoning_effort: 'high',
+    })
+    expect(spawned.isError).toBe(true)
+    expect(text(spawned)).toMatch(/reasoning effort/u)
+    expect(ctx.agents.list()).toEqual([lead])
+  })
+
+  it('routes a teammate through its name preset and lets an explicit route win', async () => {
+    const { ctx, lead } = await setup(['hang', 'hang', 'hang'])
+    await ctx.plugin(AgentTeamLlmSettings, {
+      enabled: true,
+      allowedRoutes: [{ provider: 'mock', model: 'recon-model' }, { provider: 'mock', model: 'explicit-model' }],
+      roleRoutes: [{ name: 'recon', provider: 'mock', model: 'recon-model' }],
+    })
+    const preset = await execute(ctx, lead, 'spawn_teammate', {
+      name: 'recon', description: 'survey', prompt: 'survey',
+    })
+    expect(preset.isError).toBe(false)
+    expect((await waitRunning(ctx, spawnedChildId(ctx, lead, preset))).options)
+      .toMatchObject({ provider: 'mock', model: 'recon-model' })
+
+    const explicit = await execute(ctx, lead, 'spawn_teammate', {
+      name: 'other', description: 'other', prompt: 'other',
+      provider: 'mock', model: 'explicit-model',
+    })
+    expect(explicit.isError).toBe(false)
+    expect((await waitRunning(ctx, spawnedChildId(ctx, lead, explicit))).options)
+      .toMatchObject({ provider: 'mock', model: 'explicit-model' })
+  })
+
+  it('applies the configured default route and rejects a route outside the allowed list', async () => {
+    const { ctx, lead } = await setup(['hang', 'hang'])
+    await ctx.plugin(AgentTeamLlmSettings, {
+      enabled: true,
+      allowedRoutes: [{ provider: 'mock', model: 'default-model' }],
+      defaultProvider: 'mock',
+      defaultModel: 'default-model',
+    })
+    const routed = await execute(ctx, lead, 'spawn_teammate', {
+      name: 'worker', description: 'work', prompt: 'work',
+    })
+    expect(routed.isError).toBe(false)
+    expect((await waitRunning(ctx, spawnedChildId(ctx, lead, routed))).options)
+      .toMatchObject({ provider: 'mock', model: 'default-model' })
+
+    const rejected = await execute(ctx, lead, 'spawn_teammate', {
+      name: 'other', description: 'other', prompt: 'other',
+      provider: 'mock', model: 'not-allowed',
+    })
+    expect(rejected.isError).toBe(true)
+    expect(text(rejected)).toMatch(/not allowed for this Session/u)
+  })
+
+  it('ignores configured routes while the Team settings are disabled', async () => {
+    const { ctx, lead } = await setup(['hang', 'hang'])
+    await ctx.plugin(AgentTeamLlmSettings, {
+      allowedRoutes: [{ provider: 'mock', model: 'recon-model' }],
+      roleRoutes: [{ name: 'recon', provider: 'mock', model: 'recon-model' }],
+    })
+    const spawned = await execute(ctx, lead, 'spawn_teammate', {
+      name: 'recon', description: 'survey', prompt: 'survey',
+    })
+    expect(spawned.isError).toBe(false)
+    expect((await waitRunning(ctx, spawnedChildId(ctx, lead, spawned))).options)
+      .toMatchObject({ provider: 'mock', model: 'mock' })
   })
 
   it('installs the complete scoped schema and shared-checkout policy for roots and teammates', async () => {
@@ -731,5 +914,213 @@ describe('dsh-tool-team', () => {
     const childId = spawnedChildId(ctx, lead, result)
     await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
     expect(ctx.agentTeams.listMembers(lead)[1]).toMatchObject({ provider: 'team-fresh' })
+  })
+
+  it('creates every roster member from the Lead\'s workspace and seeds the task', async () => {
+    const root = projectRoot()
+    const { ctx, lead } = await setup(['hang', 'hang'], false, join(root, 'packages', 'app'))
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [{ provider: 'mock', model: 'roster-model' }] })
+    const roots = installRoster(ctx, [
+      { name: 'recon', description: 'survey the tree', prompt: 'survey the tree', context: 'fresh' },
+      { name: 'writer', description: 'write the report', context: 'fresh' },
+    ])
+    const created = await execute(ctx, lead, 'spawn_team', {})
+    expect(created.isError, text(created)).toBe(false)
+    expect(JSON.parse(text(created)) as RosterResult).toMatchObject({
+      members: [{ target: 'recon' }, { target: 'writer' }],
+      errors: [],
+    })
+    expect(roots).toEqual([root])
+    for (const name of ['recon', 'writer']) {
+      expect((await waitRunning(ctx, memberId(ctx, lead, name))).options).toMatchObject({ provider: 'mock', model: 'mock' })
+    }
+    // A roster entry without its own task starts from the responsibility it declares.
+    expect(await initialPrompt(ctx, memberId(ctx, lead, 'writer'))).toEqual([
+      '<system-reminder>\nYou are teammate "writer".\nYour Team Lead is named "lead".\nUse list_agents({}) to find your teammates and their names.\nTo message your Team Lead, use send_message({ target: "lead", message: "..." }).\nTo message another teammate, use send_message({ target: "<teammate name>", message: "..." }).\n</system-reminder>\n\n',
+      'write the report',
+    ])
+    expect(await initialPrompt(ctx, memberId(ctx, lead, 'recon'))).toEqual([
+      '<system-reminder>\nYou are teammate "recon".\nYour Team Lead is named "lead".\nUse list_agents({}) to find your teammates and their names.\nTo message your Team Lead, use send_message({ target: "lead", message: "..." }).\nTo message another teammate, use send_message({ target: "<teammate name>", message: "..." }).\n</system-reminder>\n\n',
+      'survey the tree',
+    ])
+  })
+
+  it('passes a member sandbox scope to spawnTeammate, and omits it when none is declared', async () => {
+    const root = projectRoot()
+    const { ctx, lead } = await setup(['hang', 'hang'], false, root)
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [{ provider: 'mock', model: 'roster-model' }] })
+    installRoster(ctx, [
+      { name: 'recon', description: 'survey the tree', prompt: 'survey the tree', context: 'fresh', sandboxMode: 'read-only' },
+      { name: 'writer', description: 'write the report', prompt: 'write the report', context: 'fresh' },
+    ])
+    // Call through, so the roster really builds; the spy only reads the request.
+    const spawn = vi.spyOn(ctx.agentTeams, 'spawnTeammate')
+
+    const created = await execute(ctx, lead, 'spawn_team', {})
+    expect(created.isError, text(created)).toBe(false)
+
+    const requests = spawn.mock.calls.map(call => call[1])
+    expect(requests).toHaveLength(2)
+    expect(requests.find(request => request.name === 'recon')).toMatchObject({ sandboxMode: 'read-only' })
+    // An undeclared scope must stay absent from the request rather than travel
+    // as an empty or undefined member.
+    expect(requests.find(request => request.name === 'writer')).not.toHaveProperty('sandboxMode')
+  })
+
+  it('creates only the requested roster members and reports names outside it', async () => {
+    const root = projectRoot()
+    const { ctx, lead } = await setup(['hang', 'hang'], false, root)
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [{ provider: 'mock', model: 'roster-model' }] })
+    installRoster(ctx, [
+      { name: 'recon', description: 'survey the tree', prompt: 'survey the tree', context: 'fresh' },
+      { name: 'writer', description: 'write the report', prompt: 'write the report', context: 'fork' },
+    ])
+    const selected = await execute(ctx, lead, 'spawn_team', { only: ['writer'] })
+    expect(selected.isError, text(selected)).toBe(false)
+    expect(JSON.parse(text(selected))).toMatchObject({ members: [{ target: 'writer' }], errors: [] })
+    expect(ctx.agentTeams.listMembers(lead).map(member => member.name)).toEqual(['lead', 'writer'])
+
+    const partial = await execute(ctx, lead, 'spawn_team', { only: ['recon', 'ghost'] })
+    expect(partial.isError, text(partial)).toBe(false)
+    expect(JSON.parse(text(partial)) as RosterResult).toMatchObject({
+      members: [{ target: 'recon' }],
+      errors: [{ name: 'ghost', message: '"ghost" is not a member of the configured team roster' }],
+    })
+    expect(ctx.agentTeams.listMembers(lead).map(member => member.name)).toEqual(['lead', 'writer', 'recon'])
+  })
+
+  it('prefers a member\'s own route over its name preset and keeps the preset otherwise', async () => {
+    const root = projectRoot()
+    const { ctx, lead } = await setup(['hang', 'hang'], false, root)
+    await ctx.plugin(AgentTeamLlmSettings, {
+      enabled: true,
+      allowedRoutes: [{ provider: 'mock', model: 'preset-model' }, { provider: 'mock', model: 'own-model' }],
+      roleRoutes: [
+        { name: 'recon', provider: 'mock', model: 'preset-model' },
+        { name: 'scout', provider: 'mock', model: 'preset-model' },
+      ],
+    })
+    installRoster(ctx, [
+      { name: 'recon', description: 'survey the tree', prompt: 'survey the tree', context: 'fresh', provider: 'mock', model: 'own-model' },
+      { name: 'scout', description: 'watch the build', prompt: 'watch the build', context: 'fresh' },
+    ])
+    const created = await execute(ctx, lead, 'spawn_team', {})
+    expect(created.isError, text(created)).toBe(false)
+    expect((await waitRunning(ctx, memberId(ctx, lead, 'recon'))).options)
+      .toMatchObject({ provider: 'mock', model: 'own-model' })
+    expect((await waitRunning(ctx, memberId(ctx, lead, 'scout'))).options)
+      .toMatchObject({ provider: 'mock', model: 'preset-model' })
+  })
+
+  it('creates nobody when one roster route cannot be resolved and names every failure', async () => {
+    const root = projectRoot()
+    const { ctx, lead } = await setup(['hang', 'hang'], false, root)
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [{ provider: 'mock', model: 'roster-model' }] })
+    installRoster(ctx, [
+      { name: 'absent-provider', description: 'survey', prompt: 'survey', context: 'fresh', provider: 'absent', model: 'roster-model' },
+      { name: 'recon', description: 'survey the tree', prompt: 'survey the tree', context: 'fresh' },
+      { name: 'absent-model', description: 'report', prompt: 'report', context: 'fresh', provider: 'mock', model: 'absent-model' },
+    ])
+    const created = await execute(ctx, lead, 'spawn_team', {})
+    expect(created.isError, text(created)).toBe(false)
+    const reported = JSON.parse(text(created)) as RosterResult
+    expect(reported.members).toEqual([])
+    expect(reported.errors.map(error => error.name)).toEqual(['absent-provider', 'absent-model'])
+    expect(reported.errors[0]!.message).toMatch(/absent/u)
+    expect(reported.errors[1]!.message).toMatch(/absent/u)
+    expect(ctx.agentTeams.listMembers(lead).map(member => member.name)).toEqual(['lead'])
+    expect(ctx.agents.list()).toEqual([lead])
+  })
+
+  it('reports the members it created and the ones it could not', async () => {
+    const root = projectRoot()
+    const { ctx, lead } = await setup(['hang', 'hang'], false, root)
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [{ provider: 'mock', model: 'roster-model' }] })
+    installRoster(ctx, [
+      { name: 'recon', description: 'survey the tree', prompt: 'survey the tree', context: 'fresh' },
+      { name: 'writer', description: 'write the report', prompt: 'write the report', context: 'fork' },
+    ])
+    const taken = await execute(ctx, lead, 'spawn_teammate', {
+      name: 'writer', description: 'already running', prompt: 'already running',
+    })
+    expect(taken.isError, text(taken)).toBe(false)
+    const created = await execute(ctx, lead, 'spawn_team', {})
+    expect(created.isError, text(created)).toBe(false)
+    expect(JSON.parse(text(created)) as RosterResult).toMatchObject({
+      members: [{ target: 'recon' }],
+      errors: [{ name: 'writer', message: 'teammate name "writer" was already used in this Team' }],
+    })
+    expect(ctx.agentTeams.listMembers(lead).map(member => member.name)).toEqual(['lead', 'writer', 'recon'])
+    await execute(ctx, lead, 'interrupt_agent', { target: 'writer' })
+    await vi.waitFor(() => { expect(ctx.agents.get(memberId(ctx, lead, 'writer'))).toBeUndefined() }, { timeout: 5_000 })
+  })
+
+  it('refuses a teammate caller and creates nobody', async () => {
+    const root = projectRoot()
+    const { ctx, lead } = await setup(['hang', 'hang'], false, root)
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [{ provider: 'mock', model: 'roster-model' }] })
+    installRoster(ctx, [{ name: 'nested', description: 'survey', prompt: 'survey', context: 'fresh' }])
+    const spawned = await execute(ctx, lead, 'spawn_teammate', {
+      name: 'teammate', description: 'ask for a team', prompt: 'build a team for me',
+    })
+    const child = await waitRunning(ctx, spawnedChildId(ctx, lead, spawned))
+    const denied = await execute(ctx, child, 'spawn_team', {})
+    expect(denied.isError).toBe(true)
+    expect(text(denied)).toContain('only the Team Lead')
+    expect(ctx.agentTeams.listMembers(lead).map(member => member.name)).toEqual(['lead', 'teammate'])
+    await execute(ctx, lead, 'interrupt_agent', { target: 'teammate' })
+    await vi.waitFor(() => { expect(ctx.agents.get(child.id)).toBeUndefined() }, { timeout: 5_000 })
+  })
+
+  it('falls back to the global roster and fails loud on an empty one', async () => {
+    const { ctx, lead } = await setup([])
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [{ provider: 'mock', model: 'roster-model' }] })
+    const roots = installRoster(ctx, [])
+    const empty = await execute(ctx, lead, 'spawn_team', {})
+    expect(empty.isError).toBe(true)
+    expect(text(empty)).toContain('no members in the configured team roster')
+    expect(roots).toEqual([undefined])
+    expect(ctx.agents.list()).toEqual([lead])
+  })
+
+  it('reads no workspace when no ancestor of the Lead marks a project root', async () => {
+    const plain = mkdtempSync(join(tmpdir(), 'dsh-team-plain-'))
+    roots.push(plain)
+    const { ctx, lead } = await setup([], false, plain)
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [{ provider: 'mock', model: 'roster-model' }] })
+    const resolved = installRoster(ctx, [{ name: 'recon', description: 'survey', prompt: 'survey', context: 'fresh' }])
+    const created = await execute(ctx, lead, 'spawn_team', { only: ['ghost'] })
+    expect(created.isError, text(created)).toBe(false)
+    expect(resolved).toEqual([undefined])
+    expect(JSON.parse(text(created)) as RosterResult).toMatchObject({
+      members: [],
+      errors: [{ name: 'ghost', message: '"ghost" is not a member of the configured team roster' }],
+    })
+  })
+
+  it('reports a non-Error creation failure verbatim', async () => {
+    const root = projectRoot()
+    const { ctx, lead } = await setup([], false, root)
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [{ provider: 'mock', model: 'roster-model' }] })
+    installRoster(ctx, [
+      { name: 'text-rejection', description: 'survey', prompt: 'survey', context: 'fresh' },
+      { name: 'value-rejection', description: 'report', prompt: 'report', context: 'fresh' },
+    ])
+    const rejections = new Map<string, unknown>([
+      ['text-rejection', 'the team runtime is unavailable'],
+      ['value-rejection', { code: 'EUNAVAILABLE' }],
+    ])
+    vi.spyOn(ctx.agentTeams, 'spawnTeammate').mockImplementation(async (_caller, request) => {
+      throw rejections.get(request.name)
+    })
+    const created = await execute(ctx, lead, 'spawn_team', {})
+    expect(created.isError, text(created)).toBe(false)
+    expect(JSON.parse(text(created)) as RosterResult).toMatchObject({
+      members: [],
+      errors: [
+        { name: 'text-rejection', message: 'the team runtime is unavailable' },
+        { name: 'value-rejection', message: "{ code: 'EUNAVAILABLE' }" },
+      ],
+    })
   })
 })

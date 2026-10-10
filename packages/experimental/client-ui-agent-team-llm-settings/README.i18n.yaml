@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/client-ui-agent-team-llm-settings/README.md
+/:
+  en: e232bdddc8cecfa5
+  zh: 489ddd5ea0a48224
+/deepseek-ai-dsh-experimental-client-ui-agent-team-llm-settings:
+  en: 6484c178f64b2a2d
+  zh: edf65f282d155ca7
+/deepseek-ai-dsh-experimental-client-ui-agent-team-llm-settings/summary:
+  en: de0c902acb6247a3
+  zh: c2a24af8a439473b
+/deepseek-ai-dsh-experimental-client-ui-agent-team-llm-settings/contents:
+  en: d85c3348311ef057
+  zh: 44ebe7ceeda3dff6
+/deepseek-ai-dsh-experimental-client-ui-agent-team-llm-settings/use-this-package:
+  en: 6fc12a0d12c69470
+  zh: 2a8ec263aa54c1cb
+/deepseek-ai-dsh-experimental-client-ui-agent-team-llm-settings/understand-the-implementation:
+  en: 28351b318c1dd2d0
+  zh: ba851a6ccdfb1eb9
+/deepseek-ai-dsh-experimental-client-ui-agent-team-llm-settings/further-exploration:
+  en: 4503b05460dcfc2a
+  zh: f27af743d3b4ea61
+/deepseek-ai-dsh-experimental-client-ui-agent-team-llm-settings/model-experience:
+  en: e7d118aa4c23df23
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-client-ui-agent-team-llm-settings/model-experience/team-llm-routing-card:
+  en: 3c9e1d4e04bd95ff
+  zh: d3ad9567bfeaf594
+/deepseek-ai-dsh-experimental-client-ui-agent-team-llm-settings/model-experience/team-llm-routing-card/what-the-model-sees:
+  en: 85af20b7075d7ed7
+  zh: d2825cdf8571a024
+/deepseek-ai-dsh-experimental-client-ui-agent-team-llm-settings/model-experience/team-llm-routing-card/token-effect:
+  en: 56c9a3bb23b53da5
+  zh: 919dfabcd24541d9
+/deepseek-ai-dsh-experimental-client-ui-agent-team-llm-settings/model-experience/team-llm-routing-card/kv-cache-effect:
+  en: 2e3781e21cff27fa
+  zh: 97a3290ac65a0200
+/deepseek-ai-dsh-experimental-client-ui-agent-team-llm-settings/known-limitations-and-deferred-work:
+  en: 19b8cfee7d680687
+  zh: 6724491ae9bea88e

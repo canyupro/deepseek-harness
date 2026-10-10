@@ -192,6 +192,38 @@ describe('continuable policy inheritance', () => {
     expect(contextText).toContain('You are a delegated subagent')
   })
 
+  it('narrows a child through an explicit request sandbox mode', { timeout: 20_000 }, async () => {
+    const { ctx, parent } = await setup([textResponse('child done')])
+    setSandboxMode(parent.session, 'danger-full-access')
+    let child: Agent | undefined
+    ctx.on('agent/created', ({ agent }) => {
+      if (agent !== parent) child = agent
+    })
+
+    const spec = startSpec(parent)
+    const started = await ctx.subagents.startContinuable({
+      ...spec,
+      request: { ...spec.request, sandboxMode: 'workspace-write' },
+    })
+    if (child === undefined) throw new Error('expected the continuable child to be created')
+    // The explicit mode replaces the inherited one while the rest of the
+    // delegation policy still applies.
+    expect(ctx.sandboxPolicy.overrideOf(child.session)).toBe('workspace-write')
+    expect(ctx.approval.overrideOf(child.session)).toBe('never')
+
+    await waitNoActivation(ctx, started.childId)
+    const loaded = await loadStoredSession(ctx.sessionPersistence, started.childId)
+    expect(policyEvents(loaded.events)).toMatchObject([
+      { type: 'sandbox/mode', data: { mode: 'workspace-write', source: 'delegation' } },
+      { type: 'approval/policy', data: { policy: 'never', source: 'delegation' } },
+    ])
+    expect(foldedSandboxMode(ctx, started.childId, loaded.events)).toBe('workspace-write')
+    // The parent's broader preset identity is not carried over a narrowed sandbox.
+    expect(loaded.events.filter(event => event.type === 'permission/preset')).toHaveLength(0)
+    // The parent keeps its own broader policy.
+    expect(ctx.sandboxPolicy.overrideOf(parent.session)).toBe('danger-full-access')
+  })
+
   it('captures policy at delegation before asynchronous child creation', { timeout: 20_000 }, async () => {
     const { ctx, parent } = await setup([textResponse('child done')])
     setSandboxMode(parent.session, 'read-only')

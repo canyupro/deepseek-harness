@@ -12,6 +12,7 @@
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock, MessageId } from '@deepseek-ai/dsh-llm'
+import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type { ObjectJsonSchema, ToolRestriction } from '@deepseek-ai/dsh-tools'
 import type { SubagentDescriptorData } from './descriptor.ts'
@@ -190,6 +191,14 @@ export interface SubagentStartRequest {
    * unknown-name validation.
    */
   readonly toolFilter?: ToolRestriction
+  /**
+   * Optional explicit child sandbox mode. The in-process backend applies it in
+   * place of the mode the child would inherit from its parent's delegation, so
+   * a caller can hold a delegated child to a narrower scope than its parent
+   * without changing the parent's own policy. Omission keeps the inheritance
+   * rule: only the parent's explicit sandbox override flows down.
+   */
+  readonly sandboxMode?: SandboxMode
   /**
    * Optional per-child persona. Requires {@link SubagentCapabilities.persona};
    * rejected at start otherwise. In-process backends register it as a scoped

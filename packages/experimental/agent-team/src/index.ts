@@ -17,6 +17,7 @@ import { TeamId, TeamTaskId } from './types.ts'
 import type {
   Config,
   CreateTeamTaskRequest,
+  MemberSandboxMode,
   SendTeamMessageRequest,
   SendTeamMessageResult,
   SpawnTeammateRequest,
@@ -43,6 +44,8 @@ const DEFAULT_MAX_TASKS = 256
 const DEFAULT_MAX_PENDING_MESSAGES = 64
 const DEFAULT_MAX_MESSAGE_BYTES = 65_536
 const DEFAULT_DISPOSAL_TIMEOUT_MS = 5_000
+/** Teammates write inside their own workspace unless a deployment widens this. */
+const DEFAULT_MEMBER_SANDBOX_MODE: MemberSandboxMode = 'workspace-write'
 
 /** Validate one positive safe-integer deployment limit. */
 function positiveLimit(name: string, value: number): number {
@@ -62,6 +65,9 @@ export class TeamService extends Service {
     maxPendingMessagesPerMember: z.number().step(1).min(1).default(DEFAULT_MAX_PENDING_MESSAGES),
     maxMessageBytes: z.number().step(1).min(1).default(DEFAULT_MAX_MESSAGE_BYTES),
     disposalTimeoutMs: z.number().step(1).min(1).default(DEFAULT_DISPOSAL_TIMEOUT_MS),
+    memberSandboxMode: z
+      .union(['read-only', 'workspace-write', 'danger-full-access'])
+      .default(DEFAULT_MEMBER_SANDBOX_MODE),
   })
 
   /** Validated deployment limits used by every Team operation. */
@@ -88,6 +94,7 @@ export class TeamService extends Service {
         'disposalTimeoutMs',
         config.disposalTimeoutMs ?? DEFAULT_DISPOSAL_TIMEOUT_MS,
       ),
+      memberSandboxMode: config.memberSandboxMode ?? DEFAULT_MEMBER_SANDBOX_MODE,
     }
 
     this.activity = new TeamActivity()
@@ -148,7 +155,10 @@ export class TeamService extends Service {
    * @returns the active roster row.
    */
   async spawnTeammate(caller: Agent, request: SpawnTeammateRequest): Promise<SpawnTeammateResult> {
-    return await this.roster.spawn(caller, request)
+    return await this.roster.spawn(caller, {
+      ...request,
+      sandboxMode: request.sandboxMode ?? this.config.memberSandboxMode,
+    })
   }
 
   /**

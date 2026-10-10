@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "团队 LLM 路由",
+    "description": "选择 teammate 可以使用的模型，并配置默认路由与按名字的预设。"
+  }
+}

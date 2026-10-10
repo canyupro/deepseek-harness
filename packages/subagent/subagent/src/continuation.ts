@@ -128,7 +128,14 @@ export class SubagentContinuationManager {
     })
     // Capture before the first await: a later parent switch belongs to the
     // parent's future, not to this child.
-    const delegatedPolicies = captureDelegatedPolicyOverrides(parent)
+    const captured = captureDelegatedPolicyOverrides(parent)
+    // An explicit request mode narrows the child without touching the parent's
+    // own policy. The inherited Auto/Full identity goes with it: keeping a
+    // broader preset label over a narrowed sandbox would misreport the child
+    // and let a later preset application widen it back.
+    const delegatedPolicies = request.sandboxMode === undefined
+      ? captured
+      : { ...captured, sandboxMode: request.sandboxMode, permissionPreset: undefined }
 
     // An idle continuation-managed parent must not settle while a caller is
     // still creating its child. A turn-scoped delegation does not need this,

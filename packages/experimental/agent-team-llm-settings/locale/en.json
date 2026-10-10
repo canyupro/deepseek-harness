@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Team LLM Routes",
+    "description": "Choose which models teammates may run on, with a default route and per-name presets."
+  }
+}

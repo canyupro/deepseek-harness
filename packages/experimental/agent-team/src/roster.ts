@@ -16,6 +16,7 @@ import type { TeamState } from './projection.ts'
 import { messageAccepted } from './session-message.ts'
 import { TeamId } from './types.ts'
 import type {
+  MemberSandboxMode,
   SpawnTeammateRequest,
   SpawnTeammateResult,
   TeamMemberSnapshot,
@@ -24,6 +25,9 @@ import type {
 import { requiredText } from './validation.ts'
 
 const MEMBER_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u
+
+/** One admitted creation whose sandbox the service already resolved. */
+type AdmittedSpawnRequest = SpawnTeammateRequest & { readonly sandboxMode: MemberSandboxMode }
 
 /** Caller identity inside one implicit Team. */
 export interface TeamMembership {
@@ -139,7 +143,9 @@ export class TeamRoster {
     }]
     for (const member of state.members) {
       const live = this.ctx.agents.get(member.id)
-      const model = live?.options.model ?? root.options.model
+      // A teammate may run a route of its own, so the Lead's model is not a
+      // fallback: an unloaded member's route is simply unknown until it runs.
+      const model = live?.options.model
       result.push({
         id: member.id,
         name: member.name,
@@ -165,7 +171,7 @@ export class TeamRoster {
    * @param request - immutable name, description, prompt, context mode, provider, and cancellation.
    * @returns the active roster row.
    */
-  async spawn(caller: Agent, request: SpawnTeammateRequest): Promise<SpawnTeammateResult> {
+  async spawn(caller: Agent, request: AdmittedSpawnRequest): Promise<SpawnTeammateResult> {
     if (this.lifecycle.disposed) throw new TeamError('Agent Teams service is disposing', 'TEAM_DISPOSED')
     const operation = this.spawnAdmitted(caller, request)
     this.inFlightCreations.add(operation)
@@ -245,7 +251,7 @@ export class TeamRoster {
   /** Perform one creation admitted before the Team runtime disposal cutoff. */
   private async spawnAdmitted(
     caller: Agent,
-    request: SpawnTeammateRequest,
+    request: AdmittedSpawnRequest,
   ): Promise<SpawnTeammateResult> {
     const membership = this.membership(caller)
     if (membership.role !== 'lead') {
@@ -286,6 +292,8 @@ export class TeamRoster {
         request: {
           prompt: request.prompt,
           parent: root,
+          ...request.agentOptions === undefined ? {} : { agentOptions: request.agentOptions },
+          sandboxMode: request.sandboxMode,
         },
         signal,
       })

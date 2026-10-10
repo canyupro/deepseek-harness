@@ -1,0 +1,347 @@
+.permission {
+  display: grid;
+  gap: 6px;
+  padding: 12px 0;
+}
+
+.toggleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-primary);
+}
+
+.toggleLabel {
+  flex: 1;
+  min-width: 0;
+}
+
+.selection {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 12px;
+}
+
+.hint,
+.notice,
+.invalid,
+.conflict {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hint,
+.notice {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.invalid,
+.conflict {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.catalogError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.catalogError button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--dsw-alias-brand-primary);
+  cursor: pointer;
+}
+
+.models {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  max-height: 280px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-lg);
+}
+
+.models legend {
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.modelGroup {
+  display: grid;
+  gap: 6px;
+}
+
+.modelGroup + .modelGroup {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.providerName {
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.model {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px;
+  border-radius: var(--dsw-radius-md);
+  cursor: pointer;
+}
+
+.model:hover {
+  background: var(--dsw-alias-bg-layer-4);
+}
+
+.modelName,
+.route {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modelName {
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.route {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.unavailable {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.fields {
+  display: grid;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.select {
+  min-width: 0;
+  max-width: 320px;
+  height: 28px;
+  padding: 0 6px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+}
+
+.select:disabled {
+  opacity: 0.5;
+}
+
+.roles {
+  display: grid;
+  gap: 8px;
+}
+
+.roleRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.roleName {
+  min-width: 0;
+}
+
+.addRole,
+.removeRole {
+  height: 28px;
+  padding: 0 10px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.addRole {
+  justify-self: start;
+}
+
+.addRole:disabled,
+.removeRole:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.scope {
+  display: grid;
+  gap: 6px;
+  padding-top: 12px;
+}
+
+.scopeTabs {
+  display: flex;
+  gap: 4px;
+}
+
+.scopeTab {
+  height: 28px;
+  padding: 0 12px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.scopeTab[aria-selected='true'] {
+  background: var(--dsw-alias-bg-layer-4);
+  color: var(--dsw-alias-label-primary);
+}
+
+.scopeTab:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.workspace {
+  display: grid;
+  gap: 6px;
+  padding-top: 12px;
+}
+
+.workspacePath {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.members {
+  display: grid;
+  gap: 8px;
+}
+
+.memberRow {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.memberInvalid {
+  padding: 6px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-4);
+}
+
+.memberFields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.memberName,
+.memberDescription {
+  min-width: 0;
+}
+
+.memberPrompt {
+  width: 100%;
+  min-height: 44px;
+  padding: 6px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.memberPrompt:disabled {
+  opacity: 0.5;
+}
+
+.memberRouteFields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.routes {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.routeRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.routeIdentity {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.routeProvider,
+.routeModel,
+.routeEffort {
+  min-width: 0;
+}
+
+.routeAdd {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}

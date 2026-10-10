@@ -39,7 +39,9 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh-experimental-agent-team": "workspace:*",
+    "@deepseek-ai/dsh-experimental-agent-team-llm-settings": "workspace:*",
     "@deepseek-ai/dsh-experimental-client-ui-agent-team": "workspace:*",
+    "@deepseek-ai/dsh-experimental-client-ui-agent-team-llm-settings": "workspace:*",
     "@deepseek-ai/dsh-experimental-tool-agent-team": "workspace:*"
   },
   "peerDependencies": {

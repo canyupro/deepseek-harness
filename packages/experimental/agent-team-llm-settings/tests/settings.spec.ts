@@ -1,0 +1,774 @@
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import type { WorkspaceFileScope } from '@deepseek-ai/dsh-api-workspace-files'
+import AgentTeamLlmSettings, { teamRouteFor } from '../src/index.ts'
+import type { TeamDocument } from '../src/index.ts'
+
+const ROUTE = { provider: 'mock', model: 'flash' }
+const OTHER = { provider: 'mock', model: 'strong' }
+
+describe('agent-team-llm-settings', () => {
+  it('is inert while disabled', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, { allowedRoutes: [ROUTE], roleRoutes: [{ ...OTHER, name: 'recon' }] })
+    expect(ctx.agentTeamLlm.current().enabled).toBe(false)
+    expect(teamRouteFor(ctx.agentTeamLlm.current(), 'recon')).toBeUndefined()
+    await ctx.fiber.dispose()
+    expect(ctx.get('agentTeamLlm')).toBeUndefined()
+  })
+
+  it('resolves a preset by teammate name, then the default route', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, {
+      enabled: true,
+      allowedRoutes: [ROUTE, OTHER],
+      defaultProvider: ROUTE.provider,
+      defaultModel: ROUTE.model,
+      roleRoutes: [{ ...OTHER, name: 'recon' }],
+    })
+    const current = ctx.agentTeamLlm.current()
+    expect(teamRouteFor(current, 'recon')).toMatchObject({ provider: 'mock', model: 'strong' })
+    expect(teamRouteFor(current, 'implement')).toMatchObject({ provider: 'mock', model: 'flash' })
+  })
+
+  it('falls back to inheriting the Lead route without a preset or default', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [ROUTE] })
+    expect(teamRouteFor(ctx.agentTeamLlm.current(), 'recon')).toBeUndefined()
+  })
+
+  it('brands a configured reasoning effort', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, {
+      enabled: true,
+      allowedRoutes: [{ ...ROUTE, reasoningEffort: 'high' }],
+      defaultProvider: ROUTE.provider,
+      defaultModel: ROUTE.model,
+      roleRoutes: [{ ...ROUTE, reasoningEffort: 'high', name: 'recon' }],
+    })
+    const preset = teamRouteFor(ctx.agentTeamLlm.current(), 'recon')
+    expect(preset?.reasoningEffort).toBe('high')
+  })
+
+  it('rejects a default route that names only one half', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [ROUTE], defaultProvider: ROUTE.provider })
+    expect(() => ctx.agentTeamLlm.current()).toThrow(/needs both `defaultProvider` and `defaultModel`/u)
+  })
+
+  it('rejects an enabled document without an allowed route', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true })
+    expect(() => ctx.agentTeamLlm.current()).toThrow(/at least one allowed route/u)
+  })
+
+  it('rejects a preset route outside the allowed list', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, {
+      enabled: true,
+      allowedRoutes: [ROUTE],
+      roleRoutes: [{ ...OTHER, name: 'recon' }],
+    })
+    expect(() => ctx.agentTeamLlm.current()).toThrow(/not one of the allowed routes/u)
+  })
+
+  it('rejects a default route outside the allowed list', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, {
+      enabled: true,
+      allowedRoutes: [ROUTE],
+      defaultProvider: OTHER.provider,
+      defaultModel: OTHER.model,
+    })
+    expect(() => ctx.agentTeamLlm.current()).toThrow(/not one of the allowed routes/u)
+  })
+
+  it('rejects a repeated teammate preset name', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, {
+      enabled: true,
+      allowedRoutes: [ROUTE],
+      roleRoutes: [{ ...ROUTE, name: 'recon' }, { ...ROUTE, name: 'recon' }],
+    })
+    expect(() => ctx.agentTeamLlm.current()).toThrow(/repeat teammate preset "recon"/u)
+  })
+
+  it('ignores an allow-list violation while the document is disabled', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, {
+      allowedRoutes: [ROUTE],
+      defaultProvider: OTHER.provider,
+      defaultModel: OTHER.model,
+    })
+    expect(ctx.agentTeamLlm.current().enabled).toBe(false)
+  })
+
+  it('reports no fixed roster while only the global layer is read', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [ROUTE] })
+    expect(ctx.agentTeamLlm.current().members).toEqual([])
+  })
+
+  it('resolves a fixed roster from the global layer', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, {
+      enabled: true,
+      allowedRoutes: [ROUTE, OTHER],
+      members: [{
+        name: 'recon',
+        description: 'Maps the tree before anything changes.',
+        prompt: 'Read the layout first.',
+        context: 'fork',
+        provider: ROUTE.provider,
+        model: ROUTE.model,
+        reasoningEffort: 'high',
+      }],
+    })
+
+    expect(ctx.agentTeamLlm.current().members).toEqual([{
+      name: 'recon',
+      description: 'Maps the tree before anything changes.',
+      prompt: 'Read the layout first.',
+      context: 'fork',
+      provider: 'mock',
+      model: 'flash',
+      reasoningEffort: 'high',
+    }])
+  })
+
+  it('defaults a global member to a fresh context without a route', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, { members: [{ name: 'recon', description: 'Maps the tree.' }] })
+
+    expect(ctx.agentTeamLlm.current().members).toEqual([
+      { name: 'recon', description: 'Maps the tree.', context: 'fresh' },
+    ])
+  })
+
+  it('rejects a global member name that is not lowercase kebab-case', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, { members: [{ name: 'Recon Bot', description: 'Reads.' }] })
+
+    expect(() => ctx.agentTeamLlm.current()).toThrow(/member "Recon Bot" must match/u)
+  })
+
+  it('rejects a global member name reserved for the Lead', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, { members: [{ name: 'lead', description: 'Reads.' }] })
+
+    expect(() => ctx.agentTeamLlm.current()).toThrow(/member "lead" is reserved for the Team Lead/u)
+  })
+
+  it('rejects a repeated global member name', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, {
+      members: [{ name: 'recon', description: 'Reads.' }, { name: 'recon', description: 'Reads twice.' }],
+    })
+
+    expect(() => ctx.agentTeamLlm.current()).toThrow(/repeat teammate member "recon"/u)
+  })
+
+  it('rejects a global roster above the deployment cap', async () => {
+    const ctx = new Context()
+    await ctx.plugin(AgentTeamLlmSettings, {
+      maxMembers: 1,
+      members: [{ name: 'recon', description: 'Reads.' }, { name: 'reviewer', description: 'Reviews.' }],
+    })
+
+    expect(() => ctx.agentTeamLlm.current())
+      .toThrow(/members holds 2 entries, above the configured maximum of 1/u)
+  })
+
+  it('rejects a global member route that names only one half', async () => {
+    const providerOnly = new Context()
+    await providerOnly.plugin(AgentTeamLlmSettings, {
+      members: [{ name: 'recon', description: 'Reads.', provider: ROUTE.provider }],
+    })
+    expect(() => providerOnly.agentTeamLlm.current())
+      .toThrow(/member "recon" route needs both `provider` and `model`/u)
+
+    const modelOnly = new Context()
+    await modelOnly.plugin(AgentTeamLlmSettings, {
+      members: [{ name: 'reviewer', description: 'Reviews.', model: ROUTE.model }],
+    })
+    expect(() => modelOnly.agentTeamLlm.current())
+      .toThrow(/member "reviewer" route needs both `provider` and `model`/u)
+  })
+})
+
+describe('agent-team-llm-settings workspace document', () => {
+  let root: string
+  let repo: string
+  let ctx: Context
+
+  /** Build a project root with a `.git` marker plus a nested working directory. */
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'dsh-team-settings-'))
+    repo = join(root, 'repo')
+    await mkdir(join(repo, '.git'), { recursive: true })
+    await mkdir(join(repo, 'packages', 'app'), { recursive: true })
+    ctx = new Context()
+  })
+
+  afterEach(async () => {
+    await ctx.fiber.dispose()
+    await rm(root, { recursive: true, force: true })
+  })
+
+  /** Write raw JSON as the workspace document, bypassing every write path. */
+  async function writeRaw(value: unknown): Promise<void> {
+    await mkdir(join(repo, '.dsh'), { recursive: true })
+    await writeFile(join(repo, '.dsh', 'team.json'), JSON.stringify(value), 'utf8')
+  }
+
+  /** Mount the service with the global layer every merge test starts from. */
+  async function mount(): Promise<void> {
+    await ctx.plugin(AgentTeamLlmSettings, {
+      enabled: true,
+      allowedRoutes: [ROUTE, OTHER],
+      defaultProvider: ROUTE.provider,
+      defaultModel: ROUTE.model,
+      roleRoutes: [{ ...OTHER, name: 'recon' }],
+    })
+  }
+
+  /** Mount the service with a global roster the workspace merge starts from. */
+  async function mountRoster(): Promise<void> {
+    await ctx.plugin(AgentTeamLlmSettings, {
+      enabled: true,
+      allowedRoutes: [ROUTE, OTHER],
+      members: [
+        { name: 'recon', description: 'Global recon.', prompt: 'Read the tree.' },
+        { name: 'reviewer', description: 'Global reviewer.', provider: ROUTE.provider, model: ROUTE.model },
+      ],
+    })
+  }
+
+  it('merges the workspace document field by field over the global layer', async () => {
+    await mount()
+    await ctx.agentTeamLlm.saveWorkspaceDocument(repo, {
+      version: 1,
+      members: [{ name: 'recon', description: 'Reads the tree before anything changes.' }],
+    })
+
+    const resolved = ctx.agentTeamLlm.resolveFor(repo)
+
+    expect(resolved.members).toEqual([{ name: 'recon', description: 'Reads the tree before anything changes.', context: 'fresh' }])
+    expect(teamRouteFor(resolved, 'recon')).toMatchObject({ provider: 'mock', model: 'strong' })
+    expect(resolved.defaultRoute).toEqual(ROUTE)
+    expect(resolved.enabled).toBe(true)
+  })
+
+  it('lets the workspace document override only the fields it declares', async () => {
+    await mount()
+    await ctx.agentTeamLlm.saveWorkspaceDocument(repo, {
+      version: 1,
+      allowedRoutes: [ROUTE, { ...OTHER, provider: 'mock', model: 'local' }],
+      defaultProvider: 'mock',
+      defaultModel: 'local',
+      roleRoutes: [{ name: 'recon', provider: 'mock', model: 'local' }],
+      enabled: false,
+    })
+
+    const resolved = ctx.agentTeamLlm.resolveFor(repo)
+
+    expect(resolved.enabled).toBe(false)
+    expect(resolved.roleRoutes).toEqual([{ name: 'recon', provider: 'mock', model: 'local' }])
+    expect(resolved.allowedRoutes).toEqual([ROUTE, { provider: 'mock', model: 'local' }])
+    expect(teamRouteFor(resolved, 'recon')).toBeUndefined()
+  })
+
+  it('brands a member reasoning effort declared in the workspace document', async () => {
+    await mount()
+    await writeRaw({
+      version: 1,
+      members: [{
+        name: 'reviewer',
+        description: 'Reads the diff.',
+        context: 'fork',
+        prompt: 'Review carefully.',
+        provider: 'mock',
+        model: 'strong',
+        reasoningEffort: 'high',
+      }],
+    })
+
+    expect(ctx.agentTeamLlm.resolveFor(repo).members[0]).toEqual({
+      name: 'reviewer',
+      description: 'Reads the diff.',
+      context: 'fork',
+      prompt: 'Review carefully.',
+      provider: 'mock',
+      model: 'strong',
+      reasoningEffort: 'high',
+    })
+  })
+
+  it('brands a route reasoning effort declared in the workspace document', async () => {
+    await mount()
+    await writeRaw({
+      version: 1,
+      allowedRoutes: [{ provider: 'mock', model: 'flash', reasoningEffort: 'high' }],
+      roleRoutes: [{ name: 'recon', provider: 'mock', model: 'flash', reasoningEffort: 'high' }],
+    })
+
+    const resolved = ctx.agentTeamLlm.resolveFor(repo)
+
+    expect(resolved.allowedRoutes).toEqual([{ provider: 'mock', model: 'flash', reasoningEffort: 'high' }])
+    expect(resolved.roleRoutes).toEqual([{ name: 'recon', provider: 'mock', model: 'flash', reasoningEffort: 'high' }])
+  })
+
+  it('merges the workspace roster by name over the global roster', async () => {
+    await mountRoster()
+    await writeRaw({
+      version: 1,
+      members: [
+        { name: 'recon', description: 'Workspace recon.' },
+        { name: 'builder', description: 'Builds the change.' },
+      ],
+    })
+
+    expect(ctx.agentTeamLlm.resolveFor(repo).members).toEqual([
+      { name: 'recon', description: 'Workspace recon.', context: 'fresh' },
+      { name: 'reviewer', description: 'Global reviewer.', context: 'fresh', provider: 'mock', model: 'flash' },
+      { name: 'builder', description: 'Builds the change.', context: 'fresh' },
+    ])
+  })
+
+  it('keeps the global roster when the workspace document declares no members', async () => {
+    await mountRoster()
+    await ctx.agentTeamLlm.saveWorkspaceDocument(repo, { version: 1, enabled: false })
+
+    expect(ctx.agentTeamLlm.resolveFor(repo).members).toEqual([
+      { name: 'recon', description: 'Global recon.', prompt: 'Read the tree.', context: 'fresh' },
+      { name: 'reviewer', description: 'Global reviewer.', context: 'fresh', provider: 'mock', model: 'flash' },
+    ])
+  })
+
+  it('finds the project root from a nested working directory', async () => {
+    await mount()
+    await ctx.agentTeamLlm.saveWorkspaceDocument(join(repo, 'packages', 'app'), { version: 1 })
+
+    expect(ctx.agentTeamLlm.readWorkspaceDocument(join(repo, 'packages', 'app'))).toEqual({ version: 1 })
+    expect(ctx.agentTeamLlm.readWorkspaceDocument(join(root, 'packages', 'app'))).toBeUndefined()
+  })
+
+  it('reads a `.git` file as the project-root marker', async () => {
+    await mount()
+    const worktree = join(root, 'worktree')
+    await mkdir(worktree, { recursive: true })
+    await writeFile(join(worktree, '.git'), 'gitdir: ../repo/.git/worktrees/worktree', 'utf8')
+    await ctx.agentTeamLlm.saveWorkspaceDocument(worktree, { version: 1 })
+
+    expect(ctx.agentTeamLlm.readWorkspaceDocument(worktree)).toEqual({ version: 1 })
+  })
+
+  it('falls back to the global layer when no ancestor is a project root', async () => {
+    await mount()
+    const detached = await mkdtemp(join(tmpdir(), 'dsh-team-detached-'))
+
+    try {
+      expect(ctx.agentTeamLlm.resolveFor(detached)).toEqual(ctx.agentTeamLlm.current())
+      expect(ctx.agentTeamLlm.resolveFor(undefined)).toEqual(ctx.agentTeamLlm.current())
+      await expect(ctx.agentTeamLlm.saveWorkspaceDocument(detached, { version: 1 }))
+        .rejects.toThrow(/needs a \.git ancestor/u)
+    } finally {
+      await rm(detached, { recursive: true, force: true })
+    }
+  })
+
+  it('falls back to the global layer when the project root carries no document', async () => {
+    await mount()
+
+    expect(ctx.agentTeamLlm.resolveFor(repo)).toEqual(ctx.agentTeamLlm.current())
+  })
+
+  it('rejects an unknown document field by naming it', async () => {
+    await mount()
+    await writeRaw({ version: 1, roster: [] })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo)).toThrow(/unknown field "roster"/u)
+  })
+
+  it('rejects a document that is not a JSON object', async () => {
+    await mount()
+    await writeRaw(null)
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo))
+      .toThrow(/team\.json: expected a JSON object, got null/u)
+
+    await writeRaw([])
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo))
+      .toThrow(/team\.json: expected a JSON object, got an array/u)
+  })
+
+  it('rejects a member whose name or description is not a non-empty string', async () => {
+    await mount()
+    await writeRaw({ version: 1, members: [{ name: 7, description: 'Reads.' }] })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo))
+      .toThrow(/team\.json members\[0\]\.name: must be a non-empty string/u)
+
+    await writeRaw({ version: 1, members: [{ name: 'recon', description: 7 }] })
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo))
+      .toThrow(/team\.json members\[0\]\.description: must be a non-empty string/u)
+  })
+
+  it('rejects a member prompt that is not a string', async () => {
+    await mount()
+    await writeRaw({ version: 1, members: [{ name: 'recon', description: 'Reads.', prompt: 7 }] })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo))
+      .toThrow(/team\.json members\[0\]\.prompt: must be a string, got a number/u)
+  })
+
+  it('rejects a member list that is not an array', async () => {
+    await mount()
+    await writeRaw({ version: 1, members: {} })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo))
+      .toThrow(/team\.json members: must be an array, got a object/u)
+  })
+
+  it('rejects a member context other than fresh or fork', async () => {
+    await mount()
+    await writeRaw({ version: 1, members: [{ name: 'recon', description: 'Reads.', context: 'reuse' }] })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo))
+      .toThrow(/team\.json members\[0\]\.context: must be "fresh" or "fork"/u)
+  })
+
+  it('rejects a member route that names "provider" without "model"', async () => {
+    await mount()
+    await writeRaw({ version: 1, members: [{ name: 'recon', description: 'Reads.', provider: 'mock' }] })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo))
+      .toThrow(/team\.json members\[0\]: names "provider" without "model"/u)
+  })
+
+  it('rejects a default route that names only "defaultModel"', async () => {
+    await mount()
+    await writeRaw({ version: 1, defaultModel: 'flash' })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo))
+      .toThrow(/team\.json: names "defaultModel" without "defaultProvider"/u)
+  })
+
+  it('rejects an unknown member field by naming it', async () => {
+    await mount()
+    await writeRaw({ version: 1, members: [{ name: 'recon', description: 'Reads.', seniority: 'staff' }] })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo)).toThrow(/team\.json members\[0\]: unknown field "seniority"/u)
+  })
+
+  it('rejects a version other than 1 without downgrading', async () => {
+    await mount()
+    await writeRaw({ version: 2 })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo)).toThrow(/version/u)
+  })
+
+  it('rejects a default route that names only one half', async () => {
+    await mount()
+    await writeRaw({ version: 1, defaultProvider: 'mock' })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo)).toThrow(/team\.json: names "defaultProvider" without "defaultModel"/u)
+  })
+
+  it('rejects a member route that names only one half', async () => {
+    await mount()
+    await writeRaw({ version: 1, members: [{ name: 'recon', description: 'Reads.', model: 'strong' }] })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo)).toThrow(/team\.json members\[0\]: names "model" without "provider"/u)
+  })
+
+  it('rejects a member name that is not lowercase kebab-case', async () => {
+    await mount()
+    await writeRaw({ version: 1, members: [{ name: 'Recon Bot', description: 'Reads.' }] })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo))
+      .toThrow(/team\.json members\[0\]\.name: "Recon Bot" must match/u)
+  })
+
+  it('rejects a member name reserved for the Lead', async () => {
+    await mount()
+    await writeRaw({ version: 1, members: [{ name: 'lead', description: 'Reads.' }] })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo))
+      .toThrow(/team\.json members\[0\]\.name: "lead" is reserved for the Team Lead/u)
+  })
+
+  it('rejects a repeated member name', async () => {
+    await mount()
+    await writeRaw({
+      version: 1,
+      members: [{ name: 'recon', description: 'Reads.' }, { name: 'recon', description: 'Reads twice.' }],
+    })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo)).toThrow(/team\.json members\[1\]\.name: "recon" repeats an earlier member/u)
+  })
+
+  it('rejects a roster above the deployment cap', async () => {
+    await ctx.plugin(AgentTeamLlmSettings, { maxMembers: 1 })
+    await writeRaw({
+      version: 1,
+      members: [{ name: 'recon', description: 'Reads.' }, { name: 'reviewer', description: 'Reviews.' }],
+    })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo))
+      .toThrow(/team\.json members: holds 2 entries, above the configured maximum of 1/u)
+  })
+
+  it('refuses to write a document it cannot validate', async () => {
+    await mount()
+
+    await expect(ctx.agentTeamLlm.saveWorkspaceDocument(repo, { version: 1, enabled: 'yes' } as unknown as TeamDocument))
+      .rejects.toThrow(/team\.json/u)
+    expect(ctx.agentTeamLlm.readWorkspaceDocument(repo)).toBeUndefined()
+  })
+
+  it('replaces the document atomically and leaves no temporary sibling', async () => {
+    await mount()
+    await ctx.agentTeamLlm.saveWorkspaceDocument(repo, {
+      version: 1,
+      members: [{ name: 'recon', description: 'First roster.' }],
+    })
+    await ctx.agentTeamLlm.saveWorkspaceDocument(repo, {
+      version: 1,
+      members: [{ name: 'recon', description: 'Second roster.' }],
+    })
+
+    expect(await readdir(join(repo, '.dsh'))).toEqual(['team.json'])
+    expect(await readFile(join(repo, '.dsh', 'team.json'), 'utf8')).toContain('Second roster.')
+    expect(ctx.agentTeamLlm.resolveFor(repo).members[0]?.description).toBe('Second roster.')
+  })
+
+  it('reads the document through the Remote without a path from the wire', async () => {
+    await mount()
+    await ctx.agentTeamLlm.saveWorkspaceDocument(repo, { version: 1, enabled: false })
+    const scope: WorkspaceFileScope = { sessionId: SessionId('team-settings'), workspaceRoot: repo }
+
+    expect(ctx.agentTeamLlm.readTeamDocument(scope, new AbortController().signal))
+      .toEqual({ path: join(repo, '.dsh', 'team.json'), document: { version: 1, enabled: false } })
+  })
+
+  it('reports the document path with no document through the Remote', async () => {
+    await mount()
+    const scope: WorkspaceFileScope = { sessionId: SessionId('team-settings'), workspaceRoot: repo }
+
+    expect(ctx.agentTeamLlm.readTeamDocument(scope, new AbortController().signal))
+      .toEqual({ path: join(repo, '.dsh', 'team.json'), document: null })
+  })
+
+  it('reports a document path that exists but cannot be read as a file', async () => {
+    await mount()
+    await mkdir(join(repo, '.dsh', 'team.json'), { recursive: true })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo)).toThrow(/EISDIR/u)
+  })
+
+  it('reports a Remote write failure that is not a document rejection', async () => {
+    await mount()
+    await mkdir(join(repo, '.dsh', 'team.json'), { recursive: true })
+    const scope: WorkspaceFileScope = { sessionId: SessionId('team-settings'), workspaceRoot: repo }
+
+    await expect(ctx.agentTeamLlm.saveTeamDocument(scope, { version: 1 }, new AbortController().signal))
+      .rejects.toThrow(/team\.json/u)
+  })
+
+  it('reports no document path when the Session workspace has no project root', async () => {
+    await mount()
+    const detached = await mkdtemp(join(tmpdir(), 'dsh-team-detached-'))
+    const scope: WorkspaceFileScope = { sessionId: SessionId('team-settings'), workspaceRoot: detached }
+
+    try {
+      expect(ctx.agentTeamLlm.readTeamDocument(scope, new AbortController().signal))
+        .toEqual({ path: null, document: null })
+      await expect(ctx.agentTeamLlm.saveTeamDocument(scope, { version: 1 }, new AbortController().signal))
+        .rejects.toThrow(/no \.git ancestor/u)
+    } finally {
+      await rm(detached, { recursive: true, force: true })
+    }
+  })
+
+  it('reports a rejected Remote document write', async () => {
+    await mount()
+    const scope: WorkspaceFileScope = { sessionId: SessionId('team-settings'), workspaceRoot: repo }
+
+    await expect(ctx.agentTeamLlm.saveTeamDocument(
+      scope,
+      { version: 1, members: [{ name: 'Recon', description: 'Reads.' }] },
+      new AbortController().signal,
+    )).rejects.toThrow(/team\.json members\[0\]\.name: "Recon" must match/u)
+  })
+
+  it('honors a canceled Remote call', async () => {
+    await mount()
+    const scope: WorkspaceFileScope = { sessionId: SessionId('team-settings'), workspaceRoot: repo }
+    const aborted = new AbortController()
+    aborted.abort()
+
+    expect(() => ctx.agentTeamLlm.readTeamDocument(scope, aborted.signal)).toThrow(/aborted/u)
+    await expect(ctx.agentTeamLlm.saveTeamDocument(scope, { version: 1 }, aborted.signal)).rejects.toThrow(/aborted/u)
+  })
+
+  it('reports a malformed document as a decoding failure', async () => {
+    await mount()
+    await mkdir(join(repo, '.dsh'), { recursive: true })
+    await writeFile(join(repo, '.dsh', 'team.json'), '{ not json', 'utf8')
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo)).toThrow(/is not JSON/u)
+  })
+})
+
+/**
+ * The per-member sandbox scope, across the global layer, the workspace document,
+ * and the by-name merge. Each case stages the field it asserts, so removing the
+ * sandbox handling from any layer turns the matching case red rather than
+ * leaving an empty roster on both sides of the comparison.
+ */
+describe('agent-team-llm-settings member sandbox scope', () => {
+  let root: string
+  let repo: string
+  let ctx: Context
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'dsh-team-sandbox-'))
+    repo = join(root, 'repo')
+    await mkdir(join(repo, '.git'), { recursive: true })
+    ctx = new Context()
+  })
+
+  afterEach(async () => {
+    await ctx.fiber.dispose()
+    await rm(root, { recursive: true, force: true })
+  })
+
+  /** Write raw JSON as the workspace document, bypassing every write path. */
+  async function writeRaw(value: unknown): Promise<void> {
+    await mkdir(join(repo, '.dsh'), { recursive: true })
+    await writeFile(join(repo, '.dsh', 'team.json'), JSON.stringify(value), 'utf8')
+  }
+
+  it('resolves a global member sandbox scope, and omits it when none is declared', async () => {
+    const withMode = new Context()
+    await withMode.plugin(AgentTeamLlmSettings, {
+      members: [
+        { name: 'recon', description: 'Reads.', sandboxMode: 'read-only' },
+        { name: 'writer', description: 'Writes.', sandboxMode: 'workspace-write' },
+        { name: 'admin', description: 'Full.', sandboxMode: 'danger-full-access' },
+        { name: 'scout', description: 'No declared scope.' },
+      ],
+    })
+
+    expect(withMode.agentTeamLlm.current().members).toEqual([
+      { name: 'recon', description: 'Reads.', context: 'fresh', sandboxMode: 'read-only' },
+      { name: 'writer', description: 'Writes.', context: 'fresh', sandboxMode: 'workspace-write' },
+      { name: 'admin', description: 'Full.', context: 'fresh', sandboxMode: 'danger-full-access' },
+      { name: 'scout', description: 'No declared scope.', context: 'fresh' },
+    ])
+    // An undeclared scope must leave the key absent, not carry an empty string.
+    expect(withMode.agentTeamLlm.current().members[3]).not.toHaveProperty('sandboxMode')
+
+    await withMode.fiber.dispose()
+  })
+
+  it('refuses a global member sandbox scope outside the three modes at the Config layer', async () => {
+    const ctx = new Context()
+    // The reachable contract: `memberSchema` is a three-value union, so an
+    // unknown scope never reaches `resolveMembers`; the mount itself is refused
+    // and the message names the offending field.
+    await expect(ctx.plugin(AgentTeamLlmSettings, {
+      members: [{ name: 'recon', description: 'Reads.', sandboxMode: 'sudo' }],
+    })).rejects.toThrow(/members\[0\]\.sandboxMode expected "read-only" \| "workspace-write" \| "danger-full-access" but got "sudo"/u)
+
+    await ctx.fiber.dispose()
+  })
+
+  it('reads a member sandbox scope out of the workspace document', async () => {
+    await ctx.plugin(AgentTeamLlmSettings, {})
+    await writeRaw({
+      version: 1,
+      members: [{ name: 'recon', description: 'Reads.', sandboxMode: 'danger-full-access' }],
+    })
+
+    expect(ctx.agentTeamLlm.resolveFor(repo).members[0]).toEqual({
+      name: 'recon',
+      description: 'Reads.',
+      context: 'fresh',
+      sandboxMode: 'danger-full-access',
+    })
+  })
+
+  it('rejects a member sandbox scope outside the three modes, naming the field', async () => {
+    await ctx.plugin(AgentTeamLlmSettings, {})
+    await writeRaw({
+      version: 1,
+      members: [{ name: 'recon', description: 'Reads.', sandboxMode: 'sudo' }],
+    })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo)).toThrow(
+      /team\.json members\[0\]\.sandboxMode: must be "read-only", "workspace-write", or "danger-full-access"/u,
+    )
+  })
+
+  it('overrides the global sandbox scope for a same-named workspace member', async () => {
+    await ctx.plugin(AgentTeamLlmSettings, {
+      members: [
+        { name: 'recon', description: 'Global recon.', sandboxMode: 'read-only' },
+        { name: 'writer', description: 'Global writer.', sandboxMode: 'read-only' },
+      ],
+    })
+    await writeRaw({
+      version: 1,
+      members: [
+        { name: 'recon', description: 'Workspace recon.', sandboxMode: 'danger-full-access' },
+        // declares no scope of its own, so the global entry keeps its own
+        { name: 'writer', description: 'Workspace writer.' },
+      ],
+    })
+
+    const members = ctx.agentTeamLlm.resolveFor(repo).members
+
+    expect(members.map(member => ({ name: member.name, description: member.description, sandboxMode: member.sandboxMode }))).toEqual([
+      { name: 'recon', description: 'Workspace recon.', sandboxMode: 'danger-full-access' },
+      { name: 'writer', description: 'Workspace writer.', sandboxMode: undefined },
+    ])
+    // The declared override replaced the entry in place, so global order holds.
+    expect(members.map(member => member.name)).toEqual(['recon', 'writer'])
+  })
+
+  it('inherits the global sandbox scope when the workspace document declares none', async () => {
+    await ctx.plugin(AgentTeamLlmSettings, {
+      enabled: true,
+      allowedRoutes: [ROUTE],
+      members: [{ name: 'recon', description: 'Global recon.', sandboxMode: 'workspace-write' }],
+    })
+    await writeRaw({ version: 1 })
+
+    const members = ctx.agentTeamLlm.resolveFor(repo).members
+
+    expect(members).toHaveLength(1)
+    expect(members[0]).toMatchObject({ name: 'recon', sandboxMode: 'workspace-write' })
+  })
+
+  it('appends a workspace-only member carrying its own sandbox scope', async () => {
+    await ctx.plugin(AgentTeamLlmSettings, {
+      members: [{ name: 'recon', description: 'Global recon.', sandboxMode: 'read-only' }],
+    })
+    await writeRaw({
+      version: 1,
+      members: [{ name: 'builder', description: 'Builds.', sandboxMode: 'danger-full-access' }],
+    })
+
+    const members = ctx.agentTeamLlm.resolveFor(repo).members
+
+    expect(members.map(member => member.name)).toEqual(['recon', 'builder'])
+    expect(members[1]).toMatchObject({ name: 'builder', sandboxMode: 'danger-full-access' })
+    expect(members[0]).toMatchObject({ name: 'recon', sandboxMode: 'read-only' })
+  })
+})

@@ -751,13 +751,15 @@ export interface ToolResultPruneConfig {
 ## `@deepseek-ai/dsh-cordis-host-runner`
 
 - `inject`: `tools`
-- `source`: [`packages/extensions/cordis-host-runner/src/index.ts:93`](../packages/extensions/cordis-host-runner/src/index.ts)
+- `source`: [`packages/extensions/cordis-host-runner/src/index.ts:99`](../packages/extensions/cordis-host-runner/src/index.ts)
 
 ```ts config-catalog
 /** Runner configuration. */
 export interface Config {
   /** Maximum synchronous VM evaluation time in milliseconds. */
   vmTimeoutMs?: number
+  /** Host home persisting saved plugins under `plugins/library.json`. */
+  libraryHome?: string
   /** Maximum wait for a valid Client inspect response in milliseconds. */
   clientInspectTimeoutMs?: number
 }
@@ -833,7 +835,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-agent-team`
 
 - `inject`: `agents` · `sessions` · `sessionPersistence` · `sessionProjections` · `subagents`
-- `source`: [`packages/experimental/agent-team/src/types.ts:152`](../packages/experimental/agent-team/src/types.ts)
+- `source`: [`packages/experimental/agent-team/src/types.ts:153`](../packages/experimental/agent-team/src/types.ts)
 
 ```ts config-catalog
 /** Team-service deployment limits. */
@@ -851,6 +853,49 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-agent-team -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-agent-team-llm-settings -->
+<a id="deepseek-aidsh-experimental-agent-team-llm-settings"></a>
+
+## `@deepseek-ai/dsh-experimental-agent-team-llm-settings`
+
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/experimental/agent-team-llm-settings/src/index.ts:55`](../packages/experimental/agent-team-llm-settings/src/index.ts)
+
+```ts config-catalog
+/** Optional deployment base for the Team LLM settings. */
+export interface Config {
+  /** Initial enabled state inherited when neither layer overrides it. */
+  enabled: Volatile<boolean>
+  /** Initial exact route list inherited when neither layer overrides it. */
+  allowedRoutes: Volatile<TeamLlmRouteInput[]>
+  /** Initial per-name preset list inherited when neither layer overrides it. */
+  roleRoutes: Volatile<TeamLlmRoleRouteInput[]>
+  /** Initial provider for the route used when no preset and no explicit route applies. */
+  defaultProvider: Volatile<string>
+  /** Initial model for the route used when no preset and no explicit route applies. */
+  defaultModel: Volatile<string>
+  /** Inclusive cap on fixed roster entries in one workspace document. */
+  maxMembers: number
+}
+
+/** Route fields as declared in configuration, before reasoning-effort branding. */
+export interface TeamLlmRouteInput {
+  /** Registered LLM provider id. */
+  readonly provider: string
+  /** Provider-owned exact model id. */
+  readonly model: string
+  /** Adapter-owned reasoning effort; omission uses the model default. */
+  readonly reasoningEffort?: string
+}
+
+/** Preset fields as declared in configuration, before reasoning-effort branding. */
+export interface TeamLlmRoleRouteInput extends TeamLlmRouteInput {
+  /** Teammate name this preset applies to. */
+  readonly name: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-agent-team-llm-settings -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-api-speech-to-text -->
 <a id="deepseek-aidsh-experimental-api-speech-to-text"></a>
@@ -1214,7 +1259,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-tool-agent-team`
 
 - `inject`: `agents` · `agentTeams` · `tools` · `systemPrompt`
-- `source`: [`packages/experimental/tool-agent-team/src/index.ts:17`](../packages/experimental/tool-agent-team/src/index.ts)
+- `source`: [`packages/experimental/tool-agent-team/src/index.ts:32`](../packages/experimental/tool-agent-team/src/index.ts)
 
 ```ts config-catalog
 /** Tool routing configuration. */
@@ -4414,6 +4459,7 @@ export interface Config {
 | `@deepseek-ai/dsh-deepseek-llm-api-extensions` | — | [`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../packages/llm/deepseek-llm-api-extensions/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-auto-review` | `approval` · `llm` · `permissionPresets` · `sessions` · `tools` | [`packages/experimental/auto-review/src/index.ts`](../packages/experimental/auto-review/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-agent-team` | — | [`packages/experimental/client-ui-agent-team/src/index.ts`](../packages/experimental/client-ui-agent-team/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-client-ui-agent-team-llm-settings` | — | [`packages/experimental/client-ui-agent-team-llm-settings/src/index.ts`](../packages/experimental/client-ui-agent-team-llm-settings/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-claude-code-mods` | — | [`packages/experimental/client-ui-claude-code-mods/src/index.ts`](../packages/experimental/client-ui-claude-code-mods/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-voice-input` | — | [`packages/experimental/client-ui-voice-input/src/index.ts`](../packages/experimental/client-ui-voice-input/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native` | `computerUse` · `tools` · `systemPrompt` | [`packages/experimental/computer-use-cua-driver-native/src/index.ts`](../packages/experimental/computer-use-cua-driver-native/src/index.ts) |
@@ -4424,6 +4470,7 @@ export interface Config {
 | `@deepseek-ai/dsh-host-directory-picker-auto` | `webServer` · `loader` | [`packages/host/directory-picker-auto/src/index.ts`](../packages/host/directory-picker-auto/src/index.ts) |
 | `@deepseek-ai/dsh-host-directory-picker-native` | — | [`packages/host/directory-picker-native/src/index.ts`](../packages/host/directory-picker-native/src/index.ts) |
 | `@deepseek-ai/dsh-host-plugin-inventory` | `loader` | [`packages/host/plugin-inventory/src/index.ts`](../packages/host/plugin-inventory/src/index.ts) |
+| `@deepseek-ai/dsh-host-token-usage` | `sessionQuery` | [`packages/host/token-usage/src/index.ts`](../packages/host/token-usage/src/index.ts) |
 | `@deepseek-ai/dsh-llm` | — | [`packages/llm/llm/src/index.ts`](../packages/llm/llm/src/index.ts) |
 | `@deepseek-ai/dsh-lsp` | — | [`packages/lsp/lsp/src/index.ts`](../packages/lsp/lsp/src/index.ts) |
 | `@deepseek-ai/dsh-mcp-resources` | `tools` | [`packages/mcp/mcp-resources/src/index.ts`](../packages/mcp/mcp-resources/src/index.ts) |

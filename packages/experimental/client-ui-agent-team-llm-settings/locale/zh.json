@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "团队 LLM 设置",
+    "description": "在插件页编辑 teammate 允许使用的模型路由、默认路由，以及按名字的预设。"
+  }
+}
