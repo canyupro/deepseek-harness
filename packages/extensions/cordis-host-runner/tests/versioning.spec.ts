@@ -55,8 +55,7 @@ describe('dynamic Plugin versions', () => {
     const approval = request as {
       requestId: Parameters<typeof runner.runHostHalf>[4]
     }
-    await expect(runner.runHostHalf(
-      AGENT_A,
+    await expect(runner.runHostHalf(AGENT_A.id,
       defined.pluginId,
       defined.packageId,
       'run',
@@ -81,18 +80,18 @@ describe('dynamic Plugin versions', () => {
       purpose: 'render a panel',
       code: { host: HOST, client: CLIENT_CODE },
     })
-    const first = await runner.runHostHalf(AGENT_A, defined.pluginId, defined.packageId, 'run', null, false)
+    const first = await runner.runHostHalf(AGENT_A.id, defined.pluginId, defined.packageId, 'run', null, false)
     expect(first).toMatchObject({ ok: true, startedHere: true })
     if (!first.ok) throw new Error(first.message)
-    await expect(runner.settleUserRun(AGENT_A, defined.pluginId, {
+    await expect(runner.settleUserRun(AGENT_A.id, defined.pluginId, {
       ok: true,
       pluginRunId: first.pluginRunId,
     })).resolves.toMatchObject({ ok: true })
 
-    const attached = await runner.runHostHalf(AGENT_A, defined.pluginId, defined.packageId, 'run', null, false)
+    const attached = await runner.runHostHalf(AGENT_A.id, defined.pluginId, defined.packageId, 'run', null, false)
     expect(attached).toMatchObject({ ok: true, startedHere: false })
     if (!attached.ok) throw new Error(attached.message)
-    await expect(runner.settleUserRun(AGENT_A, defined.pluginId, {
+    await expect(runner.settleUserRun(AGENT_A.id, defined.pluginId, {
       ok: false,
       reason: 'client-half-failed',
       pluginRunId: attached.pluginRunId,

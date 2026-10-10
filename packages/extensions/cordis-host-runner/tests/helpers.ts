@@ -70,7 +70,7 @@ export async function setup(config?: Config): Promise<Harness> {
         await runner.resolveRequestRun(requestId, { ok: false, reason: 'rejected', message: 'not now' })
         return
       }
-      const half = await runner.runHostHalf(AGENT_A, pluginId, packageId, mode, requestId, false)
+      const half = await runner.runHostHalf(AGENT_A.id, pluginId, packageId, mode, requestId, false)
       if (!half.ok) {
         await runner.resolveRequestRun(requestId, {
           ok: false, reason: 'host-half-failed', message: half.message,
@@ -87,7 +87,7 @@ export async function setup(config?: Config): Promise<Harness> {
         })
         return
       }
-      const source = runner.getClientCode(AGENT_A, pluginId, half.pluginRunId)
+      const source = runner.getClientCode(AGENT_A.id, pluginId, half.pluginRunId)
       await runner.resolveRequestRun(requestId, {
         ok: true,
         pluginRunId: source.pluginRunId,

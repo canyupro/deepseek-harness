@@ -273,8 +273,8 @@ describe('dynamic runner dispatch', () => {
       sessionId: AGENT_A.id, name: 'doubler', purpose: 'p', host: HOST_CODE,
     })
 
-    const first = await runner.runHostHalf(AGENT_A, pluginId, packageId, 'run', null, false)
-    const second = await runner.runHostHalf(AGENT_A, pluginId, packageId, 'run', null, false)
+    const first = await runner.runHostHalf(AGENT_A.id, pluginId, packageId, 'run', null, false)
+    const second = await runner.runHostHalf(AGENT_A.id, pluginId, packageId, 'run', null, false)
 
     expect(first).toEqual({
       ok: true, pluginId, packageId, pluginRunId: 'run-1', waitingFor: [], startedHere: true,
@@ -293,8 +293,8 @@ describe('dynamic runner dispatch', () => {
     })
 
     const [first, second] = await Promise.all([
-      runner.runHostHalf(AGENT_A, pluginId, packageId, 'run', null, false),
-      runner.runHostHalf(AGENT_A, pluginId, packageId, 'run', null, false),
+      runner.runHostHalf(AGENT_A.id, pluginId, packageId, 'run', null, false),
+      runner.runHostHalf(AGENT_A.id, pluginId, packageId, 'run', null, false),
     ])
 
     expect(first).toMatchObject({ ok: true, pluginRunId: 'run-1', startedHere: true })
@@ -307,13 +307,13 @@ describe('dynamic runner dispatch', () => {
       sessionId: AGENT_A.id, name: 'ui', purpose: 'p', client: CLIENT_CODE,
     })
 
-    expect(() => runner.getClientCode(AGENT_A, pluginId, 'run-0' as never)).toThrow('is not running')
-    const started = await runner.runHostHalf(AGENT_A, pluginId, packageId, 'run', null, false)
+    expect(() => runner.getClientCode(AGENT_A.id, pluginId, 'run-0' as never)).toThrow('is not running')
+    const started = await runner.runHostHalf(AGENT_A.id, pluginId, packageId, 'run', null, false)
     if (!started.ok) throw new Error(started.message)
-    expect(runner.getClientCode(AGENT_A, pluginId, started.pluginRunId)).toEqual({
+    expect(runner.getClientCode(AGENT_A.id, pluginId, started.pluginRunId)).toEqual({
       code: CLIENT_CODE, name: 'ui', pluginId, packageId, pluginRunId: started.pluginRunId,
     })
-    expect(() => runner.getClientCode(AGENT_B, pluginId, started.pluginRunId)).toThrow('no dynamic plugin')
+    expect(() => runner.getClientCode(AGENT_B.id, pluginId, started.pluginRunId)).toThrow('no dynamic plugin')
   })
 
   it('accepts and ignores an answer to a request nobody is waiting for', async () => {
@@ -337,9 +337,9 @@ describe('dynamic runner dispatch', () => {
     await Promise.resolve()
     const asked = gateway.events.find(([name]) => name === 'cordis/request-run')?.[1]
     const requestId = (asked as { requestId: ApprovalRequestIdType }).requestId
-    const first = await runner.runHostHalf(AGENT_A, pluginId, packageId, 'run', requestId, false)
+    const first = await runner.runHostHalf(AGENT_A.id, pluginId, packageId, 'run', requestId, false)
     if (!first.ok) throw new Error(first.message)
-    expect(runner.getClientCode(AGENT_A, pluginId, first.pluginRunId).pluginRunId).toBe(first.pluginRunId)
+    expect(runner.getClientCode(AGENT_A.id, pluginId, first.pluginRunId).pluginRunId).toBe(first.pluginRunId)
     // The user stops it while that page is still loading, cancelling the request.
     await runner.stop(AGENT_A, pluginId)
 
@@ -349,7 +349,7 @@ describe('dynamic runner dispatch', () => {
       'cordis/request-run-resolved',
       { requestId, outcome: 'cancelled' },
     ])
-    await expect(runner.runHostHalf(AGENT_A, pluginId, packageId, 'run', null, false))
+    await expect(runner.runHostHalf(AGENT_A.id, pluginId, packageId, 'run', null, false))
       .resolves.toMatchObject({ ok: true, pluginRunId: 'run-2', startedHere: true })
   })
 
@@ -364,7 +364,7 @@ describe('dynamic runner dispatch', () => {
     await Promise.resolve()
     const asked = gateway.events.find(([name]) => name === 'cordis/request-run')?.[1]
     const requestId = (asked as { requestId: ApprovalRequestIdType }).requestId
-    const started = await runner.runHostHalf(AGENT_A, pluginId, packageId, 'run', requestId, false)
+    const started = await runner.runHostHalf(AGENT_A.id, pluginId, packageId, 'run', requestId, false)
     if (!started.ok) throw new Error(started.message)
     await runner.stop(AGENT_A, pluginId)
 
@@ -392,7 +392,7 @@ describe('dynamic runner dispatch', () => {
     expect(pending).toMatchObject({ ok: true, status: 'awaiting-approval' })
     const asked = gateway.events.find(([name]) => name === 'cordis/request-run')?.[1]
     const requestId = (asked as { requestId: ApprovalRequestIdType }).requestId
-    const started = await runner.runHostHalf(AGENT_A, pluginId, packageId, 'run', requestId, false)
+    const started = await runner.runHostHalf(AGENT_A.id, pluginId, packageId, 'run', requestId, false)
     if (!started.ok) throw new Error(started.message)
     await expect(runner.resolveRequestRun(requestId, { ok: true, pluginRunId: started.pluginRunId }))
       .resolves.toEqual({ accepted: true })
@@ -514,7 +514,7 @@ describe('render failure reports', () => {
     const { pluginId, packageId } = define(runner, {
       sessionId: AGENT_A.id, name: 'ui', purpose: 'renders', client: CLIENT_CODE,
     })
-    const started = await runner.runHostHalf(AGENT_A, pluginId, packageId, 'run', null, false)
+    const started = await runner.runHostHalf(AGENT_A.id, pluginId, packageId, 'run', null, false)
     if (!started.ok) throw new Error(started.message)
 
     await runner.reportRenderFailure(
@@ -537,7 +537,7 @@ describe('render failure reports', () => {
     const { pluginId, packageId } = define(runner, {
       sessionId: AGENT_A.id, name: 'ui', purpose: 'renders', client: CLIENT_CODE,
     })
-    const started = await runner.runHostHalf(AGENT_A, pluginId, packageId, 'run', null, false)
+    const started = await runner.runHostHalf(AGENT_A.id, pluginId, packageId, 'run', null, false)
     if (!started.ok) throw new Error(started.message)
 
     // The reporting path must never fail a render, so a report it cannot place
