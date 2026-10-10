@@ -74,7 +74,7 @@ describe('member row prompt and route fields', () => {
   it('stages the prompt typed into the textarea', () => {
     const { actions } = renderCard()
 
-    const prompt = screen.getByLabelText(en.agentTeamLlmMemberPrompt)
+    const prompt = screen.getByLabelText(en.agentTeamLlmMemberPrompt) as HTMLTextAreaElement
     expect(prompt.value).toBe('')
 
     fireEvent.change(prompt, { target: { value: 'Read the layout first.' } })

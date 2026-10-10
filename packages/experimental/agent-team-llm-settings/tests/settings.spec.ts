@@ -683,6 +683,7 @@ describe('agent-team-llm-settings member sandbox scope', () => {
     // unknown scope never reaches `resolveMembers`; the mount itself is refused
     // and the message names the offending field.
     await expect(ctx.plugin(AgentTeamLlmSettings, {
+      // @ts-expect-error an out-of-union scope only arrives from untyped configuration
       members: [{ name: 'recon', description: 'Reads.', sandboxMode: 'sudo' }],
     })).rejects.toThrow(/members\[0\]\.sandboxMode expected "read-only" \| "workspace-write" \| "danger-full-access" but got "sudo"/u)
 

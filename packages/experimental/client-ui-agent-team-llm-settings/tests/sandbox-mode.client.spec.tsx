@@ -39,7 +39,7 @@ function draft(overrides: Partial<AgentTeamLlmMemberDraft> = {}): AgentTeamLlmMe
 /** Make the stub Host accept every write the way a ready section would. */
 function acceptWrites<T>(host: ReturnType<typeof stubConfigForm<T>>): void {
   host.mutate.mockImplementation((ops: readonly SettingsPathOpView[]) => {
-    const section = { ...host.scope.getSnapshot().value as object }
+    const section: Record<string, unknown> = { ...host.scope.getSnapshot().value as object }
     const user: Record<string, unknown> = {}
     for (const op of ops) {
       const field = op.path[0]!
@@ -203,7 +203,7 @@ describe('member sandbox row control', () => {
     const store = createSnapshotStore<AgentTeamLlmCardState>({
       ...shell,
       scope: 'global',
-      workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined },
+      workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined, reason: undefined },
       enabled: true,
       candidates: [],
       allowed: [],
