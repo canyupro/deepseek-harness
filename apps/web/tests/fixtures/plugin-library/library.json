@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "pluginId": "tfix-1",
+      "sessionId": "session-00000000-0000-4000-8000-000000000001",
+      "name": "usage-stats",
+      "purpose": "Cross-session token usage dashboard exercising the personal plugin library mount path.",
+      "state": "frozen",
+      "currentPackageId": "pkg-1",
+      "approvedClientPackages": ["pkg-1"],
+      "clientVersionUpdatesApproved": false,
+      "packages": [
+        {
+          "packageId": "pkg-1",
+          "name": "usage-stats",
+          "purpose": "Cross-session token usage dashboard exercising the personal plugin library mount path.",
+          "hostCode": "return {\n  apply(ctx) {\n    ctx.effect(() => harness.handle('usage-stats/query', async () => ({\n      total: { inputTokens: 3, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, totalTokens: 8, calls: 1 },\n      byModel: [],\n      peakTokens: 8,\n      longestChatMs: 1000,\n      currentStreak: 1,\n      longestStreak: 1,\n      activeDays: [],\n      byDay: {},\n      byWeek: {},\n      byHour: {},\n      bySession: [],\n      scanned: 1,\n      sessionCount: 1,\n    })))\n  },\n}\n",
+          "clientCode": "return {\n  apply(ctx) {\n    const slots = ctx.get('slots')\n    if (slots === undefined) return\n\n    const locale = ctx.get('locale')\n    if (locale !== undefined) {\n      ctx.effect(() => {\n        try {\n          return locale.register('usage-stats', {\n            zh: { title: '使用统计', total: '累计 Token', empty: '暂无数据' },\n            en: { title: 'Usage', total: 'Total tokens', empty: 'No data' },\n          })\n        } catch {\n          return\n        }\n      })\n    }\n    const t = locale === undefined ? (key) => key : locale.bind('usage-stats')\n\n    ctx.effect(() => slots.inject('settings.section', () => slots.register(\n      {\n        name: 'settings.section',\n        id: 'usage-stats',\n        order: 25,\n        label: () => t('title'),\n      },\n      () => React.createElement('div', { 'data-usage-stats-fixture': 'panel' },\n        React.createElement('span', { 'data-usage-stats-fixture': 'total' }, t('total'))),\n    )))\n  },\n}\n"
+        }
+      ]
+    }
+  ]
+}
