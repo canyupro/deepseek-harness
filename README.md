@@ -10,6 +10,20 @@ Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://de
 
 > **This repository is a personal fork.** [`canyupro/deepseek-harness`](https://github.com/canyupro/deepseek-harness) is maintained by an individual developer who builds a personal harness on top of the upstream project; it is not a DeepSeek AI release, and it is not the place to report the upstream project's issues. Upstream is [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness). This fork works on `dev`, its only long-lived branch: plugins, team configuration, skills, and local settings live there, and `master` follows upstream. Because this is personal work, `dev` is used directly — no feature-branch, review, or release flow — and it is rebased or merged forward from upstream when convenient.
 
+## Running this fork on another machine
+
+A clone of `dev` carries the harness code, the local plugin bundle under [`.dsh/local-plugins/`](.dsh/local-plugins/), the Agent Teams roster in [`.dsh/team.json`](.dsh/team.json), and this fork's deployment values in [`.dsh/profile.patch.yml`](.dsh/profile.patch.yml). Build outputs, credentials, the profile directory under `$DSH_HOME`, and every session stay on the machine that created them, so a fresh checkout needs three steps.
+
+```sh
+git clone https://github.com/canyupro/deepseek-harness.git && cd deepseek-harness
+git switch dev
+pnpm install && pnpm run build
+```
+
+Provide the provider keys the overlay names — `MINIMAX_CN_API_KEY`, `COMMANDCODE_API_KEY`, `YJGORK_API_KEY`, and `DEEPSEEK_API_KEY` — as launcher environment variables, then launch with the overlay: `pnpm dsh desktop --patch .dsh/profile.patch.yml`. A launcher overlay applies above the profile's own patches, so those model routes and the inspector origin reach the profile that the first launch creates without editing it. If a launch path cannot forward extra arguments, merge the overlay's rows into `$DSH_HOME/profiles/desktop/cordis.patch.yml` instead: the format is identical and rows replace each other by id.
+
+The plugin bundle reaches a profile only through an install. Run the `plugin_manager` `install_bundle` action on `.dsh/local-plugins/copy-session-id`: it records a `link:` dependency holding the absolute path of that checkout, so a clone at a different path installs its own link. The tracked source is what makes that install possible.
+
 ## Developer preview
 
 DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**

@@ -1,0 +1,177 @@
+# Personal deployment overlay for the desktop profile on a fresh machine.
+#
+# The rows below override bundle rows by id: provider routes and model
+# catalogues, subagent model selection, the Agent Teams child-LLM routes, and
+# the inspector origin the desktop shell needs. Every credential is named by
+# environment variable (`apiKeyEnv`), so the file carries no secrets.
+#
+# Apply it with the launcher's `--patch` flag — a launcher overlay sits above
+# the profile's own patches, and a later layer wins per row id:
+#
+#     pnpm dsh desktop --patch .dsh/profile.patch.yml
+#
+# When a launch path cannot forward extra arguments, merge these rows into
+# `$DSH_HOME/profiles/desktop/cordis.patch.yml`: the format is the same and
+# rows replace each other by id.
+#
+- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: commandcode
+    model: deepseek/deepseek-v4.1-flash
+- id: ui-settings-account
+  name: '@deepseek-ai/dsh-client-ui-settings-account'
+  config:
+    version: 1
+    step: done
+    purpose: both
+    process: standard
+    completion: completed
+    usage: detailed
+    developerTools: true
+- id: ui-chat
+  name: '@deepseek-ai/dsh-client-ui-chat'
+  config:
+    transcriptView: compact
+    performanceUsage: detailed
+- id: ui-settings
+  name: '@deepseek-ai/dsh-client-ui-settings'
+  config:
+    enabled: true
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  config:
+    providers:
+      minimax-cn:
+        models:
+          - id: MiniMax-M3.1-Flash-Preview
+            name: M3.1-FP
+            contextWindow: 1000000
+            maxTokens: 128000
+            input:
+              - text
+              - image
+        apiKeyEnv: MINIMAX_CN_API_KEY
+      commandcode:
+        displayName: commandcode
+        apiKeyEnv: COMMANDCODE_API_KEY
+        api: openai-completions
+        baseURL: https://api.commandcode.ai/provider/v1
+        models:
+          - id: deepseek/deepseek-v4.1-flash
+            name: v4.1-flash
+            contextWindow: 1000000
+            maxTokens: 64000
+            input:
+              - text
+              - image
+          - id: z-ai/glm-5.3-flash
+            name: 5.3-flash
+            contextWindow: 1000000
+            maxTokens: 64000
+            input:
+              - text
+              - image
+          - id: xiaomi/mimo-v2.6-pro
+            contextWindow: 1000000
+            maxTokens: 128000
+            input:
+              - text
+              - image
+          - id: deepseek/deepseek-v4.1-flash-fast
+            name: v4.1-flash-f
+            contextWindow: 1000000
+            maxTokens: 128000
+            input:
+              - text
+              - image
+          - id: claude-sonnet-5-5
+            name: sonnet-5-5
+            contextWindow: 512000
+            maxTokens: 64000
+            input:
+              - text
+              - image
+          - id: z-ai/glm-5.3-flashx
+            name: glm-5.3-flashx
+          - id: stealth/glyph-cluster:free
+      yjgork:
+        displayName: grok
+        apiKeyEnv: YJGORK_API_KEY
+        api: openai-completions
+        baseURL: https://www.shenlanqaq.com
+        models:
+          - id: grok-4.7
+            contextWindow: 200000
+            input:
+              - text
+              - image
+- id: web-search-deepseek
+  name: '@deepseek-ai/dsh-web-search-deepseek'
+  config:
+    apiKeyEnv: DEEPSEEK_API_KEY
+    maxUses: 10
+- id: ui-conversation
+  name: '@deepseek-ai/dsh-client-ui-conversation'
+  config:
+    busyEnter: steer
+- id: subagent-model-selection-settings
+  name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
+  config:
+    enabled: true
+    allowedModels:
+      - provider: minimax-cn
+        model: MiniMax-M3.1-Flash-Preview
+      - provider: commandcode
+        model: deepseek/deepseek-v4.1-flash
+      - provider: commandcode
+        model: z-ai/glm-5.3-flash
+      - provider: commandcode
+        model: xiaomi/mimo-v2.6-pro
+      - provider: commandcode
+        model: stealth/glyph-cluster:free
+- id: speech-to-text
+  name: '@deepseek-ai/dsh-experimental-speech-to-text'
+  config:
+    defaultProvider: sensevoice-local
+    language: zh
+- id: tool-agent-team
+  disabled: false
+- id: ui-agent-team-llm-settings
+  disabled: false
+
+# Agent Teams 子 LLM 路由：默认跑在年订阅的 MiniMax 上（边际成本≈0），
+# 按量计费的 commandcode 只在显式指定 / verify 预设时使用；
+# verify 固定用 z-ai/glm-5.3-flashx：跨模型家族独立核对，延迟待实测；
+# glm-5.3-flash（不带 x）思考过长会反复超时重试 10 次，仅留作显式选用。
+- id: agent-team-llm-settings
+  name: '@deepseek-ai/dsh-experimental-agent-team-llm-settings'
+  config:
+    enabled: true
+    allowedRoutes:
+      - provider: minimax-cn
+        model: MiniMax-M3.1-Flash-Preview
+      - provider: commandcode
+        model: z-ai/glm-5.3-flash
+      - provider: commandcode
+        model: deepseek/deepseek-v4.1-flash-fast
+      - provider: commandcode
+        model: deepseek/deepseek-v4.1-flash
+      - provider: commandcode
+        model: stealth/glyph-cluster:free
+    roleRoutes:
+      - provider: commandcode
+        model: z-ai/glm-5.3-flash
+        name: verify
+    defaultProvider: minimax-cn
+    defaultModel: MiniMax-M3.1-Flash-Preview
+
+# Inspector：桌面壳的页面来源是 dsh-app://app，而它的 /ingest 握手只接受
+# clientOrigins 白名单或 localhost 家族。captureFetch 是出厂行里的值，必须一并重申
+# （config 是整体替换，不是深合并）。
+- id: experimental-inspector
+  name: '@deepseek-ai/dsh-experimental-inspector'
+  config:
+    captureFetch: true
+    clientOrigins:
+      - dsh-app://app

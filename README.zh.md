@@ -10,6 +10,20 @@ DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的�
 
 > **本仓库是个人分支。** [`canyupro/deepseek-harness`](https://github.com/canyupro/deepseek-harness) 由个人维护，用于在上游项目之上搭建自己的 harness；它不是 DeepSeek AI 的发行版本，也不用于反馈上游项目的问题。上游是 [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness)。本 fork 只在 `dev` 上工作，它是唯一的长期分支：插件、团队配置、技能与本地设置都放在那里，`master` 跟随上游。由于这是个人项目，`dev` 直接使用——没有特性分支、评审或发行流程——需要时再从上游 rebase 或合并跟进。
 
+## 在另一台机器上运行本分支
+
+`dev` 的克隆自带：harness 代码、[`.dsh/local-plugins/`](.dsh/local-plugins/) 下的本地插件 bundle、[`.dsh/team.json`](.dsh/team.json) 里的 Agent Teams 编制，以及 [`.dsh/profile.patch.yml`](.dsh/profile.patch.yml) 里本分支的部署取值。构建产物、凭据、`$DSH_HOME` 下的 profile 目录以及全部会话都留在生成本机，因此新克隆只需三步。
+
+```sh
+git clone https://github.com/canyupro/deepseek-harness.git && cd deepseek-harness
+git switch dev
+pnpm install && pnpm run build
+```
+
+把 overlay 里点名的提供方密钥——`MINIMAX_CN_API_KEY`、`COMMANDCODE_API_KEY`、`YJGORK_API_KEY` 与 `DEEPSEEK_API_KEY`——作为启动器的环境变量提供，然后带 overlay 启动：`pnpm dsh desktop --patch .dsh/profile.patch.yml`。启动器 overlay 叠加在 profile 自身的 patch 之上，因此这些模型路由与 inspector 来源无需改动首次启动所生成的 profile 即可生效。若某条启动路径无法透传额外参数，就把 overlay 的行并入 `$DSH_HOME/profiles/desktop/cordis.patch.yml`：两者格式相同，同 id 的行互相替换。
+
+插件 bundle 只有通过安装才会进入 profile。对 `.dsh/local-plugins/copy-session-id` 执行 `plugin_manager` 的 `install_bundle`：它会记下一条 `link:` 依赖，里面是该克隆的**绝对路径**，因此换到别的路径的克隆会安装自己的 link。能被跟踪的源码正是这次安装的前提。
+
 ## 开发者预览
 
 DeepSeek Harness 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
