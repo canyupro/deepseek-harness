@@ -2,6 +2,7 @@
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ClientEntryState } from '@deepseek-ai/dsh-client-modules/client'
 import type { PluginEntryId } from '@deepseek-ai/dsh-api-remotes/client'
+import { pluginEntryId } from '@deepseek-ai/dsh-host-plugin-inventory'
 import { Context } from '@deepseek-ai/cordis'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
@@ -61,13 +62,13 @@ function localizedProps(list: PluginInventorySettingsTabInjected['list']) {
 /** A deployment with a roster: one failed global row, two preset-provided rows. */
 const SNAPSHOT = {
   entries: [
-    { entryId: 'telemetry', moduleName: '@fixture/telemetry', enabled: true, fiberPhase: 'failed', category: 'other' },
-    { entryId: 'timer', moduleName: 'cordis:timer', enabled: true, fiberPhase: 'active', category: 'core' },
-    { entryId: '8a1b2c3d', moduleName: '@deepseek-ai/cordis-plugin-hmr', enabled: true, fiberPhase: 'active', category: 'core' },
-    { entryId: 'unobserved', moduleName: '@fixture/unobserved-name', enabled: true, fiberPhase: null, category: 'other' },
-    { entryId: 'bash-host', moduleName: '@deepseek-ai/dsh-tool-bash', enabled: false, fiberPhase: null, category: 'extension' },
-    { entryId: 'fs-host', moduleName: '@deepseek-ai/dsh-tool-fs', enabled: false, fiberPhase: null, category: 'extension' },
-    { entryId: 'dormant', moduleName: '@fixture/dormant', enabled: false, fiberPhase: null, category: 'ui' },
+    { entryId: pluginEntryId('telemetry'), moduleName: '@fixture/telemetry', enabled: true, fiberPhase: 'failed', category: 'other' },
+    { entryId: pluginEntryId('timer'), moduleName: 'cordis:timer', enabled: true, fiberPhase: 'active', category: 'core' },
+    { entryId: pluginEntryId('8a1b2c3d'), moduleName: '@deepseek-ai/cordis-plugin-hmr', enabled: true, fiberPhase: 'active', category: 'core' },
+    { entryId: pluginEntryId('unobserved'), moduleName: '@fixture/unobserved-name', enabled: true, fiberPhase: null, category: 'other' },
+    { entryId: pluginEntryId('bash-host'), moduleName: '@deepseek-ai/dsh-tool-bash', enabled: false, fiberPhase: null, category: 'extension' },
+    { entryId: pluginEntryId('fs-host'), moduleName: '@deepseek-ai/dsh-tool-fs', enabled: false, fiberPhase: null, category: 'extension' },
+    { entryId: pluginEntryId('dormant'), moduleName: '@fixture/dormant', enabled: false, fiberPhase: null, category: 'ui' },
   ],
   agentPresets: [
     {
@@ -75,17 +76,17 @@ const SNAPSHOT = {
       name: '标准模式',
       isDefault: true,
       rows: [
-        { entryId: 'bash', moduleName: '@deepseek-ai/dsh-tool-bash', enabled: true, fiberPhase: 'active' },
-        { entryId: 'fs', moduleName: '@deepseek-ai/dsh-tool-fs', enabled: true, fiberPhase: null },
+        { entryId: pluginEntryId('bash'), moduleName: '@deepseek-ai/dsh-tool-bash', enabled: true, fiberPhase: 'active' },
+        { entryId: pluginEntryId('fs'), moduleName: '@deepseek-ai/dsh-tool-fs', enabled: true, fiberPhase: null },
         {
-          entryId: 'pwsh',
+          entryId: pluginEntryId('pwsh'),
           moduleName: '@fixture/pwsh',
           enabled: 'conditional',
           condition: 'process.platform === \'win32\'',
           fiberPhase: null,
         },
-        { entryId: 'codex', moduleName: '@fixture/codex', enabled: false, fiberPhase: null },
-        { entryId: 'crashy', moduleName: '@fixture/crashy', enabled: true, fiberPhase: 'failed' },
+        { entryId: pluginEntryId('codex'), moduleName: '@fixture/codex', enabled: false, fiberPhase: null },
+        { entryId: pluginEntryId('crashy'), moduleName: '@fixture/crashy', enabled: true, fiberPhase: 'failed' },
         { entryId: null, moduleName: '@fixture/anonymous', enabled: true, fiberPhase: null },
       ],
     },
@@ -93,14 +94,14 @@ const SNAPSHOT = {
       id: 'ptc',
       isDefault: false,
       rows: [
-        { entryId: 'bash', moduleName: '@deepseek-ai/dsh-tool-bash', enabled: true, fiberPhase: null },
-        { entryId: 'bash-fork', moduleName: '@deepseek-ai/dsh-tool-bash', enabled: true, fiberPhase: null },
-        { entryId: 'fs', moduleName: '@deepseek-ai/dsh-tool-fs', enabled: 'conditional', fiberPhase: null },
+        { entryId: pluginEntryId('bash'), moduleName: '@deepseek-ai/dsh-tool-bash', enabled: true, fiberPhase: null },
+        { entryId: pluginEntryId('bash-fork'), moduleName: '@deepseek-ai/dsh-tool-bash', enabled: true, fiberPhase: null },
+        { entryId: pluginEntryId('fs'), moduleName: '@deepseek-ai/dsh-tool-fs', enabled: 'conditional', fiberPhase: null },
       ],
     },
     { id: 'shattered', name: '坏预设', isDefault: false, broken: 'the composition file is missing', rows: [] },
   ],
-} as unknown as Snapshot
+} satisfies Snapshot
 
 async function renderReady(
   snapshot: Snapshot = SNAPSHOT,
@@ -165,7 +166,7 @@ describe('PluginInventorySettingsTab', () => {
   it('keeps authored locale titles verbatim when they resemble module names', async () => {
     const { locale, pageProps } = localizedProps(async () => ({
       entries: [{
-        entryId: 'include:navigation' as PluginEntryId, moduleName: '@acme/dsh-navigation', enabled: true, fiberPhase: null,
+        entryId: pluginEntryId('include:navigation') as PluginEntryId, moduleName: '@acme/dsh-navigation', enabled: true, fiberPhase: null,
         meta: { title: { en: 'dsh-Navigation', zh: 'dsh-导航' } },
       }],
     }))
@@ -183,7 +184,7 @@ describe('PluginInventorySettingsTab', () => {
     const presetError = 'locale/fr.json: invalid description'
     const snapshot: Snapshot = {
       entries: [{
-        entryId: 'include:global-navigation' as PluginEntryId, moduleName: '@acme/navigation', enabled: true, fiberPhase: 'active',
+        entryId: pluginEntryId('include:global-navigation') as PluginEntryId, moduleName: '@acme/navigation', enabled: true, fiberPhase: 'active',
         meta: {
           title: { en: 'Navigation', zh: '导航' },
           description: { en: 'Global navigation controls', zh: '全局导航控件' },
@@ -193,7 +194,7 @@ describe('PluginInventorySettingsTab', () => {
       agentPresets: [{
         id: 'custom', name: 'My preset', isDefault: true,
         rows: [{
-          entryId: 'include:preset-runner', moduleName: '@acme/runner', enabled: true, fiberPhase: null,
+          entryId: pluginEntryId('include:preset-runner'), moduleName: '@acme/runner', enabled: true, fiberPhase: null,
           meta: {
             title: { en: 'Session runner', zh: '会话执行器' },
             description: { en: 'Run per session', zh: '运行会话命令' },
@@ -249,15 +250,15 @@ describe('PluginInventorySettingsTab', () => {
   it.each(['global', 'preset'])('resolves each %s row field independently and hides empty English descriptions', async (scope) => {
     const rows: Snapshot['entries'] = [
       {
-        entryId: 'include:navigation' as PluginEntryId, moduleName: '@acme/dsh-sidebar/navigation', enabled: true, fiberPhase: null,
+        entryId: pluginEntryId('include:navigation') as PluginEntryId, moduleName: '@acme/dsh-sidebar/navigation', enabled: true, fiberPhase: null,
         meta: { description: { en: 'Navigation description.' } },
       },
       {
-        entryId: 'include:commands' as PluginEntryId, moduleName: '@acme/dsh-sidebar/commands', enabled: true, fiberPhase: null,
+        entryId: pluginEntryId('include:commands') as PluginEntryId, moduleName: '@acme/dsh-sidebar/commands', enabled: true, fiberPhase: null,
         meta: { title: { en: 'English title' }, description: { en: 'Package description.', zh: '中文命令说明。' } },
       },
       {
-        entryId: 'include:theme' as PluginEntryId, moduleName: '@acme/dsh-theme/client', enabled: true, fiberPhase: null,
+        entryId: pluginEntryId('include:theme') as PluginEntryId, moduleName: '@acme/dsh-theme/client', enabled: true, fiberPhase: null,
         meta: { title: { en: '@acme/dsh-theme', zh: '主题插件' }, description: { en: '', zh: '中文主题说明。' } },
       },
     ]
@@ -310,7 +311,7 @@ describe('PluginInventorySettingsTab', () => {
     const error = 'locale/zh.json: invalid title'
     await renderReady({
       entries: [{
-        entryId: 'include:legacy' as PluginEntryId, moduleName: '@acme/dsh-legacy', enabled: false, fiberPhase: null,
+        entryId: pluginEntryId('include:legacy') as PluginEntryId, moduleName: '@acme/dsh-legacy', enabled: false, fiberPhase: null,
         meta: { error },
       }],
     })
@@ -379,20 +380,20 @@ describe('PluginInventorySettingsTab', () => {
   it('marks a live phase with a dot on an untagged enabled row', async () => {
     await renderReady({
       entries: [
-        { entryId: 'booting', moduleName: '@fixture/booting', enabled: true, fiberPhase: 'loading' },
-        { entryId: 'waiting', moduleName: '@fixture/waiting', enabled: true, fiberPhase: 'pending' },
-        { entryId: 'running', moduleName: '@fixture/running', enabled: true, fiberPhase: 'active' },
-        { entryId: 'unobserved', moduleName: '@fixture/unobserved', enabled: true, fiberPhase: null },
+        { entryId: pluginEntryId('booting'), moduleName: '@fixture/booting', enabled: true, fiberPhase: 'loading' },
+        { entryId: pluginEntryId('waiting'), moduleName: '@fixture/waiting', enabled: true, fiberPhase: 'pending' },
+        { entryId: pluginEntryId('running'), moduleName: '@fixture/running', enabled: true, fiberPhase: 'active' },
+        { entryId: pluginEntryId('unobserved'), moduleName: '@fixture/unobserved', enabled: true, fiberPhase: null },
       ],
       agentPresets: [{
         id: 'standard',
         isDefault: true,
         rows: [
-          { entryId: 'stopping', moduleName: '@fixture/stopping', enabled: true, fiberPhase: 'unloading' },
-          { entryId: 'preset-running', moduleName: '@fixture/preset-running', enabled: true, fiberPhase: 'active' },
+          { entryId: pluginEntryId('stopping'), moduleName: '@fixture/stopping', enabled: true, fiberPhase: 'unloading' },
+          { entryId: pluginEntryId('preset-running'), moduleName: '@fixture/preset-running', enabled: true, fiberPhase: 'active' },
         ],
       }],
-    } as unknown as Snapshot)
+    } satisfies Snapshot)
 
     fireEvent.click(globalToggle())
     expect(screen.getAllByRole('listitem')).toHaveLength(6)
@@ -413,7 +414,7 @@ describe('PluginInventorySettingsTab', () => {
         id: 'same-module',
         isDefault: true,
         rows: [
-          { entryId: 'tool-subagent-primary', moduleName: '@deepseek-ai/dsh-tool-subagent', enabled: true, fiberPhase: null },
+          { entryId: pluginEntryId('tool-subagent-primary'), moduleName: '@deepseek-ai/dsh-tool-subagent', enabled: true, fiberPhase: null },
           { entryId: longId, moduleName: '@deepseek-ai/dsh-tool-subagent', enabled: false, fiberPhase: null },
         ],
       }],
@@ -439,9 +440,9 @@ describe('PluginInventorySettingsTab', () => {
   it('shows the entry id only where it adds to the title', async () => {
     await renderReady({
       entries: [
-        { entryId: 'timer' as PluginEntryId, moduleName: 'cordis:timer', enabled: true, fiberPhase: 'active' },
-        { entryId: 'include:hmr' as PluginEntryId, moduleName: '@deepseek-ai/cordis-plugin-hmr', enabled: true, fiberPhase: 'active' },
-        { entryId: 'typert' as PluginEntryId, moduleName: '@fixture/typert-registry', enabled: true, fiberPhase: null },
+        { entryId: pluginEntryId('timer') as PluginEntryId, moduleName: 'cordis:timer', enabled: true, fiberPhase: 'active' },
+        { entryId: pluginEntryId('include:hmr') as PluginEntryId, moduleName: '@deepseek-ai/cordis-plugin-hmr', enabled: true, fiberPhase: 'active' },
+        { entryId: pluginEntryId('typert') as PluginEntryId, moduleName: '@fixture/typert-registry', enabled: true, fiberPhase: null },
       ],
     })
     fireEvent.click(globalToggle())
@@ -649,10 +650,10 @@ describe('PluginInventorySettingsTab', () => {
   it('renders a rosterless deployment as one global list, folded until opened', async () => {
     const view = await renderReady({
       entries: [
-        { entryId: 'hmr', moduleName: '@deepseek-ai/cordis-plugin-hmr', enabled: true, fiberPhase: 'active', category: 'core' },
-        { entryId: 'off', moduleName: '@fixture/off', enabled: false, fiberPhase: null, category: 'other' },
+        { entryId: pluginEntryId('hmr'), moduleName: '@deepseek-ai/cordis-plugin-hmr', enabled: true, fiberPhase: 'active', category: 'core' },
+        { entryId: pluginEntryId('off'), moduleName: '@fixture/off', enabled: false, fiberPhase: null, category: 'other' },
       ],
-    } as unknown as Snapshot)
+    } satisfies Snapshot)
 
     expect(screen.queryByRole('button', { name: en.switcherLabel })).toBeNull()
     expect(globalToggle().getAttribute('aria-expanded')).toBe('false')
@@ -675,7 +676,7 @@ describe('PluginInventorySettingsTab', () => {
       agentPresets: [{
         id: 'solo',
         isDefault: false,
-        rows: [{ entryId: 'one', moduleName: '@fixture/one', enabled: true, fiberPhase: null }],
+        rows: [{ entryId: pluginEntryId('one'), moduleName: '@fixture/one', enabled: true, fiberPhase: null }],
       }],
     })
 
@@ -739,7 +740,7 @@ describe('PluginInventorySettingsTab', () => {
           phase: 'stopped',
         },
       ],
-    } as unknown as Snapshot)
+    } satisfies Snapshot)
 
     const toggle = screen.getByRole('button', { name: (name: string) => name.startsWith(en.dynamicTitle) })
     fireEvent.click(toggle)
@@ -777,7 +778,7 @@ describe('PluginInventorySettingsTab', () => {
         { pluginId: 'lib-edit', name: 'edit-plug', purpose: '', sessionId: 's', packageCount: 2, phase: 'running', libraryState: 'on-editable' },
         { pluginId: 'lib-frozen', name: 'frozen-plug', purpose: '', sessionId: 's', packageCount: 1, phase: 'running', libraryState: 'frozen' },
       ],
-    } as unknown as Snapshot
+    } satisfies Snapshot
     await renderReady(snapshot, { saveToLibrary, setLibraryState, removeFromLibrary })
 
     // The group starts collapsed; open it before acting on the cards.
@@ -811,7 +812,7 @@ describe('PluginInventorySettingsTab', () => {
   })
 
   it('keeps the user-defined group visible with an empty hint when no plugin exists', async () => {
-    await renderReady({ entries: [], agentPresets: [] } as unknown as Snapshot)
+    await renderReady({ entries: [], agentPresets: [] } satisfies Snapshot)
 
     const toggle = screen.getByRole('button', { name: (name: string) => name.startsWith(en.dynamicTitle) })
     fireEvent.click(toggle)
