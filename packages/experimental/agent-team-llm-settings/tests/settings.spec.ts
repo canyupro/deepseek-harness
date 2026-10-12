@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { WorkspaceFileScope } from '@deepseek-ai/dsh-api-workspace-files'
+import type { PermissionPresetService } from '@deepseek-ai/dsh-permission-presets'
 import AgentTeamLlmSettings, { teamRouteFor } from '../src/index.ts'
 import type { TeamDocument } from '../src/index.ts'
 import { TestSessionQuery, setSessionRecords, topLevelSession, childSession } from './test-session-query.ts'
@@ -788,6 +789,129 @@ describe('agent-team-llm-settings member sandbox scope', () => {
   })
 })
 
+/**
+ * The per-member approval policy, across the global layer, the workspace
+ * document, and the by-name merge. The policy is the second knob of a member's
+ * permissions pair, so each case stages it alone: an undeclared policy stays
+ * absent, an illegal one is refused by field, and a same-named workspace entry
+ * replaces the whole global entry rather than merging field by field.
+ */
+describe('agent-team-llm-settings member approval policy', () => {
+  let root: string
+  let repo: string
+  let ctx: Context
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'dsh-team-approval-'))
+    repo = join(root, 'repo')
+    await mkdir(join(repo, '.git'), { recursive: true })
+    ctx = await testContext()
+  })
+
+  afterEach(async () => {
+    await ctx.fiber.dispose()
+    await rm(root, { recursive: true, force: true })
+  })
+
+  /** Write raw JSON as the workspace document, bypassing every write path. */
+  async function writeRaw(value: unknown): Promise<void> {
+    await mkdir(join(repo, '.dsh'), { recursive: true })
+    await writeFile(join(repo, '.dsh', 'team.json'), JSON.stringify(value), 'utf8')
+  }
+
+  it('resolves a global member approval policy, and omits it when none is declared', async () => {
+    const withPolicy = await testContext()
+    await withPolicy.plugin(AgentTeamLlmSettings, {
+      members: [
+        { name: 'recon', description: 'Reads.', approvalPolicy: 'never' },
+        { name: 'writer', description: 'Writes.', approvalPolicy: 'ask' },
+        { name: 'scout', description: 'No declared policy.' },
+      ],
+    })
+
+    expect(withPolicy.agentTeamLlm.current().members).toEqual([
+      { name: 'recon', description: 'Reads.', context: 'fresh', approvalPolicy: 'never' },
+      { name: 'writer', description: 'Writes.', context: 'fresh', approvalPolicy: 'ask' },
+      { name: 'scout', description: 'No declared policy.', context: 'fresh' },
+    ])
+    // An undeclared policy must leave the key absent, not carry an empty string.
+    expect(withPolicy.agentTeamLlm.current().members[2]).not.toHaveProperty('approvalPolicy')
+
+    await withPolicy.fiber.dispose()
+  })
+
+  it('refuses a global member approval policy outside the two policies at the Config layer', async () => {
+    const ctx = await testContext()
+    // The reachable contract: `memberSchema` is a two-value union, so an unknown
+    // policy never reaches `resolveMembers`; the mount itself is refused and the
+    // message names the offending field.
+    await expect(ctx.plugin(AgentTeamLlmSettings, {
+      // @ts-expect-error an out-of-union policy only arrives from untyped configuration
+      members: [{ name: 'recon', description: 'Reads.', approvalPolicy: 'sudo' }],
+    })).rejects.toThrow(/members\[0\]\.approvalPolicy expected "ask" \| "never" but got "sudo"/u)
+
+    await ctx.fiber.dispose()
+  })
+
+  it('reads a member approval policy out of the workspace document', async () => {
+    await ctx.plugin(AgentTeamLlmSettings, {})
+    await writeRaw({
+      version: 1,
+      members: [{ name: 'recon', description: 'Reads.', approvalPolicy: 'never' }],
+    })
+
+    expect(ctx.agentTeamLlm.resolveFor(repo).members[0]).toEqual({
+      name: 'recon',
+      description: 'Reads.',
+      context: 'fresh',
+      approvalPolicy: 'never',
+    })
+  })
+
+  it('rejects a member approval policy outside the two policies, naming the field', async () => {
+    await ctx.plugin(AgentTeamLlmSettings, {})
+    await writeRaw({
+      version: 1,
+      members: [{ name: 'recon', description: 'Reads.', approvalPolicy: 'sudo' }],
+    })
+
+    expect(() => ctx.agentTeamLlm.readWorkspaceDocument(repo)).toThrow(
+      /team\.json members\[0\]\.approvalPolicy: must be "ask" or "never"/u,
+    )
+  })
+
+  it('replaces the whole global entry for a same-named workspace member', async () => {
+    await ctx.plugin(AgentTeamLlmSettings, {
+      members: [
+        { name: 'recon', description: 'Global recon.', sandboxMode: 'read-only', approvalPolicy: 'never' },
+        { name: 'writer', description: 'Global writer.', approvalPolicy: 'never' },
+      ],
+    })
+    await writeRaw({
+      version: 1,
+      members: [
+        { name: 'recon', description: 'Workspace recon.', sandboxMode: 'workspace-write', approvalPolicy: 'ask' },
+        // declares no policy of its own, so it must not inherit the global one
+        { name: 'writer', description: 'Workspace writer.' },
+      ],
+    })
+
+    const members = ctx.agentTeamLlm.resolveFor(repo).members
+
+    expect(members.map(member => ({
+      name: member.name,
+      description: member.description,
+      sandboxMode: member.sandboxMode,
+      approvalPolicy: member.approvalPolicy,
+    }))).toEqual([
+      { name: 'recon', description: 'Workspace recon.', sandboxMode: 'workspace-write', approvalPolicy: 'ask' },
+      { name: 'writer', description: 'Workspace writer.', sandboxMode: undefined, approvalPolicy: undefined },
+    ])
+    // The declared entry replaced the global one in place, so global order holds.
+    expect(members.map(member => member.name)).toEqual(['recon', 'writer'])
+  })
+})
+
 describe('agent-team-llm-settings workspace candidates', () => {
   let ctx: Context
 
@@ -878,5 +1002,96 @@ describe('agent-team-llm-settings workspace candidates', () => {
 
     await expect(ctx.agentTeamLlm.listWorkspaceCandidates(AbortSignal.abort()))
       .rejects.toThrow()
+  })
+})
+
+describe('agent-team-llm-settings member permission presets', () => {
+  let ctx: Context
+
+  beforeEach(async () => {
+    ctx = await testContext()
+  })
+
+  afterEach(async () => {
+    await ctx.fiber.dispose()
+  })
+
+  const signal = new AbortController().signal
+
+  /** The three reads this Remote makes on the composed permission domain. */
+  type PresetReads = Pick<PermissionPresetService, 'catalog' | 'optionOf' | 'resolve'>
+
+  function providePresetReads(reads: PresetReads): void {
+    // The service class owns private state, so a stand-in covering only these
+    // three reads cannot be structurally assigned to the service property.
+    ctx.provide('permissionPresets', reads as never)
+  }
+
+  it('offers nothing and the derived custom name without a permission domain', async () => {
+    await ctx.plugin(AgentTeamLlmSettings, { allowedRoutes: [ROUTE] })
+
+    expect(ctx.agentTeamLlm.listMemberPermissionPresets(signal)).toEqual({
+      presets: [],
+      custom: { name: 'custom', label: 'custom' },
+    })
+  })
+
+  it('reports every configured default with its knobs and the permission domain copy', async () => {
+    providePresetReads({
+      // A live option such as Auto is not a durable roster identity, so only
+      // `defaultOptions` may reach a member row.
+      catalog: () => ({
+        options: [{ value: 'auto', name: 'Auto' }],
+        defaultOptions: [
+          { value: 'workspace-write', name: 'Workspace write', description: 'Write inside the workspace.' },
+          { value: 'danger-full-access', name: 'Full access' },
+        ],
+        defaultPreset: 'workspace-write',
+      }),
+      resolve: name => name === 'danger-full-access'
+        ? { sandbox: 'danger-full-access', approval: 'never' }
+        : { sandbox: 'workspace-write', approval: 'ask' },
+      optionOf: name => ({
+        value: name, name: 'Custom', description: 'The current knobs match no configured preset.',
+      }),
+    })
+    await ctx.plugin(AgentTeamLlmSettings, { allowedRoutes: [ROUTE] })
+
+    expect(ctx.agentTeamLlm.listMemberPermissionPresets(signal)).toEqual({
+      presets: [
+        {
+          name: 'workspace-write', label: 'Workspace write',
+          sandbox: 'workspace-write', approval: 'ask', description: 'Write inside the workspace.',
+        },
+        { name: 'danger-full-access', label: 'Full access', sandbox: 'danger-full-access', approval: 'never' },
+      ],
+      custom: {
+        name: 'custom', label: 'Custom', description: 'The current knobs match no configured preset.',
+      },
+    })
+  })
+
+  it('omits a description the permission domain configured none for', async () => {
+    providePresetReads({
+      catalog: () => ({ options: [], defaultOptions: [{ value: 'read-only', name: 'Read only' }], defaultPreset: 'read-only' }),
+      resolve: () => ({ sandbox: 'read-only', approval: 'ask' }),
+      optionOf: () => ({ value: 'custom', name: 'custom' }),
+    })
+    await ctx.plugin(AgentTeamLlmSettings, { allowedRoutes: [ROUTE] })
+
+    const catalog = ctx.agentTeamLlm.listMemberPermissionPresets(signal)
+
+    expect(catalog.presets).toEqual([
+      { name: 'read-only', label: 'Read only', sandbox: 'read-only', approval: 'ask' },
+    ])
+    expect('description' in catalog.presets[0]!).toBe(false)
+    expect(catalog.custom).toEqual({ name: 'custom', label: 'custom' })
+    expect('description' in catalog.custom).toBe(false)
+  })
+
+  it('honors a canceled preset listing', async () => {
+    await ctx.plugin(AgentTeamLlmSettings, { allowedRoutes: [ROUTE] })
+
+    expect(() => ctx.agentTeamLlm.listMemberPermissionPresets(AbortSignal.abort())).toThrow()
   })
 })

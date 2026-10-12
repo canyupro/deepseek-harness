@@ -441,6 +441,7 @@ function install(agent: Agent, ctx: Context, config: Required<Config>): () => vo
               context: member.context,
               provider: member.context === 'fork' ? config.forkProvider : config.freshProvider,
               ...member.sandboxMode === undefined ? {} : { sandboxMode: member.sandboxMode },
+              ...member.approvalPolicy === undefined ? {} : { approvalPolicy: member.approvalPolicy },
               ...agentOptions === undefined ? {} : { agentOptions },
               signal: exec.signal,
             })

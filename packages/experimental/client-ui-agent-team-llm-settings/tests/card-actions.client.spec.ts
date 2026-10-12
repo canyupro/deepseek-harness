@@ -53,11 +53,18 @@ function documents(document?: AgentTeamLlmTeamDocument, candidates: WorkspaceSes
     ok: true as const,
     value: candidates,
   }))
+  const listMemberPermissionPresets = vi.fn(() => Promise.resolve({
+    ok: true as const,
+    value: { presets: [], custom: { name: 'custom', label: 'custom' } },
+  }))
   return {
-    slice: { readTeamDocument, saveTeamDocument, listWorkspaceCandidates } satisfies AgentTeamLlmTeamDocuments,
+    slice: {
+      readTeamDocument, saveTeamDocument, listWorkspaceCandidates, listMemberPermissionPresets,
+    } satisfies AgentTeamLlmTeamDocuments,
     readTeamDocument,
     saveTeamDocument,
     listWorkspaceCandidates,
+    listMemberPermissionPresets,
   }
 }
 
@@ -306,7 +313,7 @@ describe('hand-filled member routes', () => {
     face.setMemberName(5, 'late')
     face.setMemberDescription(5, 'late')
     face.setMemberContext(5, 'fork')
-    face.setMemberSandboxMode(5, 'read-only')
+    face.setMemberPermissions(5, 'read-only')
     face.setMemberRoute(5, 'alpha\0fast')
     face.setMemberRouteFields(5, 'beta', 'deep')
     face.setMemberEffort(5, 'high')
@@ -434,6 +441,9 @@ describe('hand-filled member routes', () => {
         readTeamDocument: () => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json', document: { version: 1 as const, enabled: false } } }),
         saveTeamDocument,
         listWorkspaceCandidates: () => Promise.resolve({ ok: true as const, value: [] }),
+        listMemberPermissionPresets: () => Promise.resolve({
+          ok: true as const, value: { presets: [], custom: { name: 'custom', label: 'custom' } },
+        }),
       },
       () => SESSION,
     )
@@ -489,13 +499,18 @@ describe('workspace document scope', () => {
     await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
 
     face.setScope('workspace')
-    face.setMemberSandboxMode(0, 'read-only')
+    face.setMemberPrompt(0, 'Read the tree before anything changes.')
     face.save()
 
     await vi.waitFor(() => { expect(remote.saveTeamDocument).toHaveBeenCalledOnce() })
     expect(remote.saveTeamDocument).toHaveBeenCalledWith(SESSION, {
       version: 1,
-      members: [{ name: 'recon', description: 'Project recon.', context: 'fresh', sandboxMode: 'read-only' }],
+      members: [{
+        name: 'recon',
+        description: 'Project recon.',
+        prompt: 'Read the tree before anything changes.',
+        context: 'fresh',
+      }],
     }, expect.any(AbortSignal))
   })
 

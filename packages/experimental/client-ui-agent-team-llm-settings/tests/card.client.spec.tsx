@@ -58,6 +58,7 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}, view: ConfigView
     members: [],
     catalogStatus: 'idle',
     catalogPartial: false,
+    memberPermissions: null,
     conflicted: false,
     problems: [],
     ...state,

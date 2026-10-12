@@ -78,6 +78,19 @@ export function AgentTeamLlmCard(props: AgentTeamLlmCardProps) {
             </p>
           )
           : null}
+        {/* A first read that refuses leaves the workspace tab disabled, so the
+            refusal and its retry live here. The workspace branch below carries
+            its own failure surface, so this one stands down while it is open. */}
+        {workspace.status === 'error' && state.scope !== 'workspace'
+          ? (
+            <div className={css.catalogError} role="alert">
+              <span>{`${t('agentTeamLlmWorkspaceLoadFailed')} ${workspace.error ?? ''}`}</span>
+              <button type="button" onClick={props.retryWorkspace}>
+                {t('agentTeamLlmWorkspaceRetry')}
+              </button>
+            </div>
+          )
+          : null}
       </div>
       {state.scope === 'global'
         ? (
@@ -102,6 +115,7 @@ export function AgentTeamLlmCard(props: AgentTeamLlmCardProps) {
               t={t}
               members={state.members}
               allowed={state.allowed}
+              memberPermissions={state.memberPermissions}
               editable={state.writable && !state.saving}
               addMember={props.addMember}
               removeMember={props.removeMember}
@@ -109,7 +123,7 @@ export function AgentTeamLlmCard(props: AgentTeamLlmCardProps) {
               setMemberDescription={props.setMemberDescription}
               setMemberPrompt={props.setMemberPrompt}
               setMemberContext={props.setMemberContext}
-              setMemberSandboxMode={props.setMemberSandboxMode}
+              setMemberPermissions={props.setMemberPermissions}
               setMemberRoute={props.setMemberRoute}
               setMemberRouteFields={props.setMemberRouteFields}
               setMemberEffort={props.setMemberEffort}
@@ -192,6 +206,7 @@ export function AgentTeamLlmCard(props: AgentTeamLlmCardProps) {
               t={t}
               members={state.members}
               allowed={state.allowed}
+              memberPermissions={state.memberPermissions}
               editable={state.writable && !state.saving}
               addMember={props.addMember}
               removeMember={props.removeMember}
@@ -199,7 +214,7 @@ export function AgentTeamLlmCard(props: AgentTeamLlmCardProps) {
               setMemberDescription={props.setMemberDescription}
               setMemberPrompt={props.setMemberPrompt}
               setMemberContext={props.setMemberContext}
-              setMemberSandboxMode={props.setMemberSandboxMode}
+              setMemberPermissions={props.setMemberPermissions}
               setMemberRoute={props.setMemberRoute}
               setMemberRouteFields={props.setMemberRouteFields}
               setMemberEffort={props.setMemberEffort}

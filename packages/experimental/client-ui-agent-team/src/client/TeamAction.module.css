@@ -128,6 +128,15 @@
   gap: 8px;
 }
 
+/* One roster cell: the member card plus its permission control, so a
+   retargetable teammate and a plain row occupy the same grid track. */
+.memberCell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .member {
   display: flex;
   align-items: flex-start;
@@ -224,6 +233,24 @@
 .meta {
   color: var(--dsw-alias-label-tertiary);
   font-size: 11px;
+}
+
+/* Member permission selector: a native control under its card, so the choice
+   list is never clipped by the panel's scrolling body. */
+.memberPermission {
+  min-width: 0;
+  padding: 2px 6px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.memberPermission:disabled {
+  cursor: default;
 }
 
 .diagnostic,

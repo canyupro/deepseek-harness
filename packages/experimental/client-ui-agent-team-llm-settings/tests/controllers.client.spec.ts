@@ -19,6 +19,9 @@ function noTeamDocuments(read: Partial<AgentTeamLlmTeamDocumentRead> = {}): Agen
     }),
     saveTeamDocument: () => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } }),
     listWorkspaceCandidates: () => Promise.resolve({ ok: true as const, value: [] }),
+    listMemberPermissionPresets: () => Promise.resolve({
+      ok: true as const, value: { presets: [], custom: { name: 'custom', label: 'custom' } },
+    }),
   }
 }
 
@@ -538,5 +541,60 @@ describe('AgentTeamLlmCardController', () => {
     await Promise.resolve()
     expect(host.mutate).not.toHaveBeenCalled()
     expect(agentTeamLlmRouteKey({ provider: 'legacy', model: 'old' })).toBe('legacy\0old')
+  })
+
+  it('leaves the member permission options unknown when the Host refuses the read', async () => {
+    const host = stubConfigForm<AgentTeamLlmSettings>()
+    host.publish({ status: 'ready', writable: true, value: EMPTY, user: {} })
+    const list = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false as const,
+        error: new RemoteError('gateway/internal', 'no permission domain', {}),
+      })
+      .mockResolvedValue({
+        ok: true as const,
+        value: { presets: [], custom: { name: 'custom', label: 'custom' } },
+      })
+    const controller = new AgentTeamLlmCardController(
+      host.scope, modelsApi().ctx,
+      { ...noTeamDocuments(), listMemberPermissionPresets: list }, () => SESSION,
+    )
+    const face = controller.inject()
+    const state = () => face.hooks.agentTeamLlmCard.getSnapshot()
+
+    await vi.waitFor(() => { expect(list).toHaveBeenCalledOnce() })
+    await Promise.resolve()
+    // A refusal is not an empty catalog: a row keeps showing its machine pair
+    // instead of claiming a preset the Host never confirmed.
+    expect(state().memberPermissions).toBeNull()
+
+    controller.refreshMemberPermissions()
+    await vi.waitFor(() => {
+      expect(state().memberPermissions).toEqual({ presets: [], custom: { name: 'custom', label: 'custom' } })
+    })
+  })
+
+  it('starts no member permission read after disposal', async () => {
+    const host = stubConfigForm<AgentTeamLlmSettings>()
+    host.publish({ status: 'ready', writable: true, value: EMPTY, user: {} })
+    const list = vi.fn(() => Promise.resolve({
+      ok: true as const,
+      value: { presets: [], custom: { name: 'custom', label: 'custom' } },
+    }))
+    const controller = new AgentTeamLlmCardController(
+      host.scope, modelsApi().ctx,
+      { ...noTeamDocuments(), listMemberPermissionPresets: list }, () => SESSION,
+    )
+    controller.inject()
+
+    await vi.waitFor(() => { expect(list).toHaveBeenCalledOnce() })
+
+    controller.dispose()
+    controller.refreshMemberPermissions()
+    await Promise.resolve()
+
+    // A disposed card holds no live Host connection, so a catalog invalidation
+    // opens no new read.
+    expect(list).toHaveBeenCalledOnce()
   })
 })

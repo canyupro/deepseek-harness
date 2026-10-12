@@ -19,7 +19,7 @@ import type { ToolRestriction } from '@deepseek-ai/dsh-tools'
 // opportunistically (the documented `ctx.get` pattern), never as a hard dep —
 // and merge the inherited permission session-event payloads.
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
-import type {} from '@deepseek-ai/dsh-user-approval'
+import type { ApprovalPolicy } from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 // Type-only: make `ctx.get('agentPresets')` resolve to the preset roster when
 // composed — a child inherits its parent's composition opportunistically (the
@@ -230,9 +230,11 @@ export interface DelegatedPolicyOverrides {
   /**
    * `'never'` whenever the approval capability is composed, `undefined`
    * otherwise: a delegated child acts only within the sandbox scope fixed at
-   * delegation, so its asks are rejected deterministically.
+   * delegation, so its asks are rejected deterministically. A caller-provided
+   * request `approvalPolicy` replaces this pin without changing the parent's
+   * own policy.
    */
-  readonly approvalPolicy: 'never' | undefined
+  readonly approvalPolicy: ApprovalPolicy | undefined
 }
 
 /**

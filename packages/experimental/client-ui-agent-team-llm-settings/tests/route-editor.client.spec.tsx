@@ -51,6 +51,7 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
     members: [],
     catalogStatus: 'ready',
     catalogPartial: false,
+    memberPermissions: null,
     conflicted: false,
     problems: [],
     ...state,
@@ -58,7 +59,7 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
   const actions = {
     setScope: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(), setMemberName: vi.fn(),
     setMemberDescription: vi.fn(), setMemberPrompt: vi.fn(), setMemberContext: vi.fn(),
-    setMemberSandboxMode: vi.fn(), setMemberRoute: vi.fn(), setMemberRouteFields: vi.fn(),
+    setMemberPermissions: vi.fn(), setMemberRoute: vi.fn(), setMemberRouteFields: vi.fn(),
     setMemberEffort: vi.fn(), retryWorkspace: vi.fn(), toggleEnabled: vi.fn(), toggleRoute: vi.fn(),
     addAllowedRoute: vi.fn(), removeAllowedRoute: vi.fn(), setRouteEffort: vi.fn(),
     setDefaultRoute: vi.fn(), retryCatalog: vi.fn(), addRole: vi.fn(), removeRole: vi.fn(),

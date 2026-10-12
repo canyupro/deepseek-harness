@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package is the browser half of `@deepseek-ai/dsh-experimental-agent-team-llm-settings`. It adds one editable card on the Plugins page for choosing which LLM routes teammates may run on, the fallback route for names without a preset, and each name's route, member composition, and permission scope. The card edits the deployment document over `ctx.configForms` and the open session's `<projectRoot>/.dsh/team.json` over the Host document Remotes; a workspace save is an overlay that writes only declared or changed fields. A session whose cwd has no project root leaves the workspace tab disabled.
+This package is the browser half of `@deepseek-ai/dsh-experimental-agent-team-llm-settings`. It adds one editable card on the Plugins page for choosing which LLM routes teammates may run on, the fallback route for names without a preset, and each name's route, member composition, and permissions preset. The card edits the deployment document over `ctx.configForms` and the open session's `<projectRoot>/.dsh/team.json` over the Host document Remotes; a workspace save is an overlay that writes only declared or changed fields. A session whose cwd has no project root leaves the workspace tab disabled.
 
 ## Table of Contents
 
@@ -26,11 +26,13 @@ This package is the browser half of `@deepseek-ai/dsh-experimental-agent-team-ll
 
 Mount it beside the Host package in a Web or Desktop composition. `@deepseek-ai/dsh-experimental-agent-team-profile` already mounts both. The card appears on the Plugins page under this bundle, and only while the Host serves the `agent-team-llm-settings` namespace.
 
-The workspace layer resolves a project root from a Session identity, because the Host derives the project root from a Session's cwd. It uses the Session the main view holds; where nothing holds main-view retention — the settings page itself — it asks the Host which Sessions it can offer and takes the most recently created one, because the offered Sessions are ordered by their header creation time rather than by recent use. The workspace tab renders that list as a picker, so the operator can point the layer at another project, and the resolved document path stays on the card so a wrong choice is visible rather than silent. Switching to the workspace tab reads `<projectRoot>/.dsh/team.json`; a project that stores none is edited from an empty document. The tab says which boundary stopped it: no Session offered at all, or a Session that belongs to no project.
+The workspace layer resolves a project root from a Session identity, because the Host derives the project root from a Session's cwd. It uses the Session the main view holds; where nothing holds main-view retention — the settings page itself — it asks the Host which Sessions it can offer and takes the most recently created one, because the offered Sessions are ordered by their header creation time rather than by recent use. The workspace tab renders that list as a picker, so the operator can point the layer at another project, and the resolved document path stays on the card so a wrong choice is visible rather than silent. Switching to the workspace tab reads `<projectRoot>/.dsh/team.json`; a project that stores none is edited from an empty document. The tab says which boundary stopped it: no Session offered at all, or a Session that belongs to no project. A first read that fails says so under the tabs and offers a retry, because the tab stays disabled until a read succeeds and its own error surface lives inside the tab.
 
 This package mounts the Host `agentTeamLlm` Remote contribution itself, the way the other experimental clients do, so the workspace layer needs no entry in the published `@deepseek-ai/dsh-api-remotes` assembly. The Host package is a peer dependency: without it mounted, the workspace tab answers a failed read instead of opening.
 
 The model choices come from the deployment's live adapter directory, so the card lists exactly the providers and models this installation can reach. A stored route the directory no longer advertises stays visible and removable instead of being silently dropped.
+
+The permissions choices come from the composed permission presets, asked of the Host instead of hardcoded, so a member row offers this deployment's own preset names with the sandbox mode and approval policy each one writes. A member whose stored pair matches no configured preset shows the permission domain's derived value, which is a display state rather than a selectable option; a composition without that domain offers no named preset at all.
 
 ## Understand the implementation
 
@@ -45,7 +47,7 @@ The model choices come from the deployment's live adapter directory, so the card
 | [`src/client/team-document.ts`](src/client/team-document.ts) | The workspace document, its member rules, and the `readTeamDocument` / `saveTeamDocument` Remote slice |
 | [`src/client/AgentTeamLlmCard.tsx`](src/client/AgentTeamLlmCard.tsx) | The card shell, the scope switch, and its one save footer |
 | [`src/client/AgentTeamLlmFields.tsx`](src/client/AgentTeamLlmFields.tsx) | The switch, the authorized-route editor with hand-filled routes and efforts, the default route, and preset rows |
-| [`src/client/AgentTeamLlmMembers.tsx`](src/client/AgentTeamLlmMembers.tsx) | The composition rows in both layers, with each one's prompt, route fields, and the rules it breaks |
+| [`src/client/AgentTeamLlmMembers.tsx`](src/client/AgentTeamLlmMembers.tsx) | The composition rows in both layers, with each one's permissions preset, prompt, route fields, and the rules it breaks |
 
 The controller keeps one staged draft per layer, so editing the workspace composition never disturbs a global draft. The global layer reads through `ctx.configForms.get('agent-team-llm-settings')` and saves as one revision; the workspace layer reads and writes through the two Remotes. `problemsOf` mirrors the Host's routing validation and `agentTeamLlmMemberProblems` its member rules; the shell folds either into `invalid`, which blocks the save. A workspace save asks `documentScope` which optional fields the project already declared or the user changed, and leaves every other field out so the project keeps inheriting it.
 
@@ -90,6 +92,7 @@ None by itself. A route this card changes takes effect when the next teammate is
 - **The default project is a heuristic** — with no main-view retention the workspace layer opens the Host's most recently created top-level Session, and creation time is not recent use, so that Session is not necessarily the project the operator means. The picker and the resolved document path make the choice checkable and correctable.
 - **Member count cap is the Host's** — the deployment's `maxMembers` is not in the document the card reads, so an over-cap composition is refused by the write instead of by the editor.
 - **Member routes are not checked against the allowlist here** — whether a member's route is authorized is decided by the Host when the member is created.
+- **A member's permissions are a preset, not a free pair** — the card offers the deployment's configured presets, so a pair no preset matches can only be shown, not edited; changing it means picking another preset.
 
 <a id="dev-note"></a>
 ### Dev Note

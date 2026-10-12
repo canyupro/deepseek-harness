@@ -159,6 +159,16 @@ declare module '@deepseek-ai/dsh-llm' {
  */
 export type MemberSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 
+/**
+ * Approval policy one teammate is created or retargeted with.
+ *
+ * Declared locally for the same reason as {@link MemberSandboxMode}: the Team
+ * vocabulary is shared with the browser client, while the approval policy type
+ * lives in a Host-only module. Assignment at the Subagent continuation and
+ * permission-preset seams is what keeps the two declarations compatible.
+ */
+export type MemberApprovalPolicy = 'ask' | 'never'
+
 /** Team-service deployment limits. */
 export interface Config {
   /** Maximum immutable teammate names retained by one Team. */
@@ -211,6 +221,11 @@ export interface SpawnTeammateRequest {
    * {@link Config.memberSandboxMode}.
    */
   readonly sandboxMode?: MemberSandboxMode
+  /**
+   * Approval policy this teammate is created with. Omission keeps the
+   * delegation rule: a teammate pinned to `never` never prompts anyone.
+   */
+  readonly approvalPolicy?: MemberApprovalPolicy
   /**
    * Child LLM route overrides, merged over the Lead's route when the teammate
    * is created. Omission keeps the Lead's provider, model, and reasoning

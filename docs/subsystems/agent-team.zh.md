@@ -200,10 +200,26 @@ async saveWorkspaceDocument(root: string, document: TeamDocument): Promise<strin
  * headless composition does not mount, so it takes no part in this order and
  * a candidate created earlier but used later ranks below this one.
  * @param signal - caller cancellation.
- * @returns at most {@link WORKSPACE_CANDIDATE_LIMIT} candidates, newest-created first.
+ * @returns at most the newest 20 candidates, newest-created first.
  * @throws Error when the caller aborted.
  */
 @Remote async listWorkspaceCandidates(signal: AbortSignal): Promise<readonly WorkspaceSessionCandidate[]>
+
+/**
+ * List the permissions options a roster member may select.
+ *
+ * The roster stores a member's sandbox mode and approval policy rather than a
+ * preset name, so it needs the knobs behind each name. The permission domain
+ * owns the names, labels, and the derived not-a-preset value for a pair that
+ * matches no configured preset; this Remote adds only the knob pair. It lists
+ * the configured presets eligible as durable defaults — `defaultOptions`, not
+ * every live option — because the current-session Auto preset is not a
+ * composable roster identity.
+ * @param signal - caller cancellation.
+ * @returns the configured presets and the derived not-a-preset option.
+ * @throws Error when the caller aborted.
+ */
+@Remote listMemberPermissionPresets(signal: AbortSignal): TeamMemberPermissionCatalog
 
 /**
  * Validate and atomically write the workspace document for one Session's workspace.
@@ -248,6 +264,24 @@ listMembers(agent: Agent): TeamMemberView[]
  * @returns the active roster row.
  */
 async spawnTeammate(caller: Agent, request: SpawnTeammateRequest): Promise<SpawnTeammateResult>
+
+/**
+ * Switch one live teammate's permission preset inside the caller's Team.
+ *
+ * Authority is resolved in this operation, not by a caller-side gate: the
+ * caller must be the exact live Team Lead of the Team that owns the target,
+ * and the target must be a roster row of that same Team. A target Session that is
+ * not live is rejected rather than skipped, because the durable policy
+ * events this call writes belong to a running Session. The switch goes
+ * through the permission-preset service's own write path, so it never
+ * injects a user message into the member's conversation.
+ * @param agent - exact live Team Lead authorizing the switch.
+ * @param request - target member Session and the preset name to apply.
+ * @returns the applied preset and the knob values it wrote.
+ * @throws {TeamError} when the caller is not a Team member, the caller is not the Team Lead, the target is not a member of the caller's Team, the target Session is not live, or no permission-preset service is composed.
+ * @throws when the preset name is unknown to the permission-preset service.
+ */
+@Remote('rePolicyMember') async rePolicyMember( agent: Agent, request: { readonly member: SessionId; readonly preset: string }, ): Promise<{ readonly preset: string; readonly sandbox: MemberSandboxMode; readonly approval: MemberApprovalPolicy }>
 
 /**
  * Queue one durable peer message, then attempt immediate delivery.
@@ -313,7 +347,7 @@ interrupt(caller: Agent, targetName: string): { previousStatus: 'running' | 'ina
 tryMembership(agent: Agent): TeamMembership | undefined
 ```
 
-Types: [Agent](core.zh.md)
+Types: [Agent](core.zh.md) · [SessionId](core.zh.md)
 
 Source: [`packages/experimental/agent-team/src/index.ts`](../../packages/experimental/agent-team/src/index.ts)
 <!-- END GENERATED cordis-surface -->

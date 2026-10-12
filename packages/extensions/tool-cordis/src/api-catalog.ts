@@ -359,7 +359,14 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: '@Remote async listWorkspaceCandidates(signal: AbortSignal): Promise<readonly WorkspaceSessionCandidate[]>',
         description: 'List the Sessions a workspace team document can be edited for.\n\nA caller with no Session of its own — the plugin settings page, where no Session is live — still needs one identity to resolve a project root from. Only top-level Sessions qualify: a subagent child runs inside its parent\'s workspace, and listing one as a separate choice would offer the picker the same directory twice. A Session whose header carries no working directory is skipped, because the document Remote resolves a project root by walking up from that directory.\n\nThe order key is the header\'s creation time. A durable Session\'s last-prompt time belongs to the GUI API session-list projection, which the headless composition does not mount, so it takes no part in this order and a candidate created earlier but used later ranks below this one.',
         parameters: [{ name: 'signal', description: 'caller cancellation.' }],
-        returns: 'at most {@link WORKSPACE_CANDIDATE_LIMIT} candidates, newest-created first.',
+        returns: 'at most the newest 20 candidates, newest-created first.',
+        throws: ['Error when the caller aborted.'],
+      },
+      {
+        signature: '@Remote listMemberPermissionPresets(signal: AbortSignal): TeamMemberPermissionCatalog',
+        description: 'List the permissions options a roster member may select.\n\nThe roster stores a member\'s sandbox mode and approval policy rather than a preset name, so it needs the knobs behind each name. The permission domain owns the names, labels, and the derived not-a-preset value for a pair that matches no configured preset; this Remote adds only the knob pair. It lists the configured presets eligible as durable defaults — `defaultOptions`, not every live option — because the current-session Auto preset is not a composable roster identity.',
+        parameters: [{ name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the configured presets and the derived not-a-preset option.',
         throws: ['Error when the caller aborted.'],
       },
       {
@@ -393,6 +400,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Create one named, continuable direct child of the Team Lead.',
         parameters: [{ name: 'caller', description: 'exact live Lead Agent.' }, { name: 'request', description: 'immutable name, description, prompt, context mode, provider, and cancellation.' }],
         returns: 'the active roster row.',
+      },
+      {
+        signature: '@Remote(\'rePolicyMember\') async rePolicyMember( agent: Agent, request: { readonly member: SessionId; readonly preset: string }, ): Promise<{ readonly preset: string; readonly sandbox: MemberSandboxMode; readonly approval: MemberApprovalPolicy }>',
+        description: 'Switch one live teammate\'s permission preset inside the caller\'s Team.\n\nAuthority is resolved in this operation, not by a caller-side gate: the caller must be the exact live Team Lead of the Team that owns the target, and the target must be a roster row of that same Team. A target Session that is not live is rejected rather than skipped, because the durable policy events this call writes belong to a running Session. The switch goes through the permission-preset service\'s own write path, so it never injects a user message into the member\'s conversation.',
+        parameters: [{ name: 'agent', description: 'exact live Team Lead authorizing the switch.' }, { name: 'request', description: 'target member Session and the preset name to apply.' }],
+        returns: 'the applied preset and the knob values it wrote.',
+        throws: ['{TeamError} when the caller is not a Team member, the caller is not the Team Lead, the target is not a member of the caller\'s Team, the target Session is not live, or no permission-preset service is composed.', 'when the preset name is unknown to the permission-preset service.'],
       },
       {
         signature: 'async sendMessage(caller: Agent, request: SendTeamMessageRequest): Promise<SendTeamMessageResult>',
@@ -7345,7 +7359,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SpawnTeammateRequest',
-    declaration: 'export interface SpawnTeammateRequest {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt: ContentBlock[];\n    readonly context: \'fresh\' | \'fork\';\n    readonly provider: string;\n    readonly sandboxMode?: MemberSandboxMode;\n    readonly agentOptions?: TeammateAgentOptions;\n    readonly signal: AbortSignal;\n}',
+    declaration: 'export interface SpawnTeammateRequest {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt: ContentBlock[];\n    readonly context: \'fresh\' | \'fork\';\n    readonly provider: string;\n    readonly sandboxMode?: MemberSandboxMode;\n    readonly approvalPolicy?: MemberApprovalPolicy;\n    readonly agentOptions?: TeammateAgentOptions;\n    readonly signal: AbortSignal;\n}',
   },
   {
     name: 'SpawnTeammateResult',
@@ -7541,7 +7555,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SubagentStartRequest',
-    declaration: 'export interface SubagentStartRequest {\n    readonly label?: string;\n    readonly prompt: ContentBlock[];\n    readonly parent: Agent;\n    readonly signal: AbortSignal;\n    readonly agentOptions?: AgentOptions;\n    readonly outputSchema?: ObjectJsonSchema;\n    readonly maxDepth?: number;\n    readonly toolFilter?: ToolRestriction;\n    readonly sandboxMode?: SandboxMode;\n    readonly persona?: string;\n}',
+    declaration: 'export interface SubagentStartRequest {\n    readonly label?: string;\n    readonly prompt: ContentBlock[];\n    readonly parent: Agent;\n    readonly signal: AbortSignal;\n    readonly agentOptions?: AgentOptions;\n    readonly outputSchema?: ObjectJsonSchema;\n    readonly maxDepth?: number;\n    readonly toolFilter?: ToolRestriction;\n    readonly sandboxMode?: SandboxMode;\n    readonly approvalPolicy?: ApprovalPolicy;\n    readonly persona?: string;\n}',
   },
   {
     name: 'SubagentStopReason',
@@ -7689,7 +7703,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TeamMemberConfig',
-    declaration: 'export interface TeamMemberConfig {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt?: string;\n    readonly context: TeamMemberContext;\n    readonly sandboxMode?: MemberSandboxMode;\n    readonly provider?: string;\n    readonly model?: string;\n    readonly reasoningEffort?: ReasoningEffortId;\n}',
+    declaration: 'export interface TeamMemberConfig {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt?: string;\n    readonly context: TeamMemberContext;\n    readonly sandboxMode?: MemberSandboxMode;\n    readonly approvalPolicy?: MemberApprovalPolicy;\n    readonly provider?: string;\n    readonly model?: string;\n    readonly reasoningEffort?: ReasoningEffortId;\n}',
   },
   {
     name: 'TeamMemberContext',
@@ -7697,7 +7711,19 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TeamMemberDocument',
-    declaration: 'export interface TeamMemberDocument {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt?: string;\n    readonly context?: TeamMemberContext;\n    readonly sandboxMode?: MemberSandboxMode;\n    readonly provider?: string;\n    readonly model?: string;\n    readonly reasoningEffort?: string;\n}',
+    declaration: 'export interface TeamMemberDocument {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt?: string;\n    readonly context?: TeamMemberContext;\n    readonly sandboxMode?: MemberSandboxMode;\n    readonly approvalPolicy?: MemberApprovalPolicy;\n    readonly provider?: string;\n    readonly model?: string;\n    readonly reasoningEffort?: string;\n}',
+  },
+  {
+    name: 'TeamMemberPermissionCatalog',
+    declaration: 'export interface TeamMemberPermissionCatalog {\n    readonly presets: readonly TeamMemberPermissionPreset[];\n    readonly custom: TeamMemberPermissionOption;\n}',
+  },
+  {
+    name: 'TeamMemberPermissionOption',
+    declaration: 'export interface TeamMemberPermissionOption {\n    readonly name: string;\n    readonly label: string;\n    readonly description?: string;\n}',
+  },
+  {
+    name: 'TeamMemberPermissionPreset',
+    declaration: 'export interface TeamMemberPermissionPreset extends TeamMemberPermissionOption {\n    readonly sandbox: MemberSandboxMode;\n    readonly approval: MemberApprovalPolicy;\n}',
   },
   {
     name: 'TeamMembership',

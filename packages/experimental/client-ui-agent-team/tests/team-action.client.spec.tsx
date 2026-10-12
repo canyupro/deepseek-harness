@@ -85,7 +85,11 @@ function bench(options: {
     awaitingFirstTurn: false,
   })
   const useSessions = bindSnapshotSelector(sessions)
-  const injected: TeamActionInjected = { openTeammate: vi.fn() }
+  const injected: TeamActionInjected = {
+    openTeammate: vi.fn(),
+    loadPresets: vi.fn(() => Promise.resolve([])),
+    retargetMember: vi.fn(() => Promise.resolve()),
+  }
   const props: TeamActionProps = {
     sessionId,
     useSession: bindSnapshotSelector(session),

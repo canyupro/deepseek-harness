@@ -116,7 +116,14 @@ export async function startInProcessRun(
 
   // Capture before the first await: a later parent switch belongs to the
   // parent's future.
-  const inherited = captureDelegatedPolicyOverrides(parent)
+  const captured = captureDelegatedPolicyOverrides(parent)
+  // An explicit request policy replaces the delegation pin without touching the
+  // parent's own policy. The inherited Auto/Full identity goes with it, for the
+  // same reason the continuation path drops it: the pair no longer matches the
+  // identity it was recorded under.
+  const inherited = request.approvalPolicy === undefined
+    ? captured
+    : { ...captured, approvalPolicy: request.approvalPolicy, permissionPreset: undefined }
 
   let structured: StructuredAttachment | undefined
   const setup = (childCtx: Context, child: Agent): void => {

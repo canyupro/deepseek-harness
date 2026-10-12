@@ -137,7 +137,8 @@ function decodeRoleRoute(value: unknown, path: FieldPath): TeamRoleRouteDocument
 /** Read one fixed member, requiring a declared route to give both halves together. */
 function decodeMember(value: unknown, path: FieldPath): TeamMemberDocument {
   const record = readObject(value, path, [
-    'name', 'description', 'prompt', 'context', 'provider', 'model', 'reasoningEffort', 'sandboxMode',
+    'name', 'description', 'prompt', 'context', 'provider', 'model', 'reasoningEffort',
+    'sandboxMode', 'approvalPolicy',
   ])
   const context = record.context
   if (context !== undefined && context !== 'fresh' && context !== 'fork') {
@@ -147,6 +148,10 @@ function decodeMember(value: unknown, path: FieldPath): TeamMemberDocument {
   if (sandboxMode !== undefined
     && sandboxMode !== 'read-only' && sandboxMode !== 'workspace-write' && sandboxMode !== 'danger-full-access') {
     return reject([...path, 'sandboxMode'], 'must be "read-only", "workspace-write", or "danger-full-access"')
+  }
+  const approvalPolicy = record.approvalPolicy
+  if (approvalPolicy !== undefined && approvalPolicy !== 'ask' && approvalPolicy !== 'never') {
+    return reject([...path, 'approvalPolicy'], 'must be "ask" or "never"')
   }
   const provider = optionalString(record, 'provider', path)
   const model = optionalString(record, 'model', path)
@@ -163,6 +168,7 @@ function decodeMember(value: unknown, path: FieldPath): TeamMemberDocument {
     ...prompt === undefined ? {} : { prompt },
     ...context === undefined ? {} : { context },
     ...sandboxMode === undefined ? {} : { sandboxMode },
+    ...approvalPolicy === undefined ? {} : { approvalPolicy },
     ...provider === undefined ? {} : { provider },
     ...model === undefined ? {} : { model },
     ...reasoningEffort === undefined ? {} : { reasoningEffort },

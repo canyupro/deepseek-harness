@@ -6,15 +6,19 @@ import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client
 import type {
   SettingsFormPathOp, SettingsFormScope, SettingsFormShell,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+// Type-only: the permissions options the Host `agentTeamLlm` Remote serves with
+// the knob pair behind every configured preset.
+import type { TeamMemberPermissionCatalog } from '@deepseek-ai/dsh-experimental-agent-team-llm-settings'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { AgentTeamLlmProblemKey } from './locales.ts'
 import {
-  agentTeamLlmMemberDrafts, agentTeamLlmMemberProblem, agentTeamLlmMemberProblems,
+  agentTeamLlmMemberDrafts, agentTeamLlmMemberPermission, agentTeamLlmMemberPermissionKnobs,
+  agentTeamLlmMemberProblem, agentTeamLlmMemberProblems,
   agentTeamLlmTeamDocumentOf, agentTeamLlmTeamMemberOf,
   emptyAgentTeamLlmMember, sameAgentTeamLlmMembers,
   type AgentTeamLlmDocumentScope, type AgentTeamLlmMemberDraft, type AgentTeamLlmMemberProblemKey,
   type AgentTeamLlmMemberState, type AgentTeamLlmTeamDocument, type AgentTeamLlmTeamDocuments,
-  type AgentTeamLlmTeamMember, type MemberSandboxMode,
+  type AgentTeamLlmTeamMember,
 } from './team-document.ts'
 
 /**
@@ -150,6 +154,12 @@ export interface AgentTeamLlmCardState extends SettingsFormShell {
   catalogStatus: 'idle' | 'loading' | 'ready' | 'error'
   /** Whether any provider-local catalog request failed. */
   catalogPartial: boolean
+  /**
+   * Permissions options the Host serves for a member row, or null before it
+   * answers. The Host derives them from the composed permission presets, so a
+   * member row shows a configured preset's name instead of a raw knob pair.
+   */
+  memberPermissions: TeamMemberPermissionCatalog | null
   /** Whether a newer Host revision invalidated the current draft. */
   conflicted: boolean
   /** Every routing rule the draft would violate; empty when a save may proceed. */
@@ -198,8 +208,8 @@ export interface AgentTeamLlmCardFace {
   setMemberPrompt: (index: number, prompt: string) => void
   /** Stage whether a member starts fresh or forks the Lead's context. */
   setMemberContext: (index: number, context: 'fresh' | 'fork') => void
-  /** Stage one member's sandbox scope; the empty string inherits the team default. */
-  setMemberSandboxMode: (index: number, sandboxMode: MemberSandboxMode | '') => void
+  /** Stage one member's permissions option; the empty string inherits the team default. */
+  setMemberPermissions: (index: number, name: string) => void
   /** Stage one member's route, or no route for the empty key. */
   setMemberRoute: (index: number, key: string) => void
   /** Stage one member's route by hand; two empty strings clear it, a half pair fails validation. */
@@ -389,6 +399,8 @@ export class AgentTeamLlmCardController {
   private catalogGroups: readonly ModelProviderGroup[] = []
   private catalogPartial = false
   private catalogStatus: AgentTeamLlmCardState['catalogStatus'] = 'idle'
+  private memberPermissions: TeamMemberPermissionCatalog | null = null
+  private memberPermissionsGeneration = 0
   private activeScope: AgentTeamLlmScopeKey = 'global'
   private readonly drafts = new Map<AgentTeamLlmScopeKey, AgentTeamLlmDraft>()
   private workspaceDocument: AgentTeamLlmTeamDocument | undefined
@@ -441,6 +453,9 @@ export class AgentTeamLlmCardController {
     // The default and preset controls render while routing is disabled too, so
     // their route choices need the directory without waiting for the switch.
     void this.loadCatalog()
+    // A member row states its permissions as a preset name, so the options must
+    // be known before the first row renders.
+    void this.loadMemberPermissions()
     // The workspace tab states whether a project root exists before it is
     // clicked, so the read starts with the card rather than on the first switch.
     void this.loadWorkspace()
@@ -451,6 +466,7 @@ export class AgentTeamLlmCardController {
     this.disposed = true
     this.saveGeneration += 1
     this.catalogGeneration += 1
+    this.memberPermissionsGeneration += 1
     this.workspaceGeneration += 1
     this.candidatesGeneration += 1
     this.lifetime.abort(new Error('client-ui-agent-team-llm-settings: card disposed'))
@@ -482,7 +498,7 @@ export class AgentTeamLlmCardController {
       setMemberDescription: (index, description) => { this.setMemberDescription(index, description) },
       setMemberPrompt: (index, prompt) => { this.setMemberPrompt(index, prompt) },
       setMemberContext: (index, context) => { this.setMemberContext(index, context) },
-      setMemberSandboxMode: (index, sandboxMode) => { this.setMemberSandboxMode(index, sandboxMode) },
+      setMemberPermissions: (index, name) => { this.setMemberPermissions(index, name) },
       setMemberRoute: (index, key) => { this.setMemberRoute(index, key) },
       setMemberRouteFields: (index, provider, model) => { this.setMemberRouteFields(index, provider, model) },
       setMemberEffort: (index, reasoningEffort) => { this.setMemberEffort(index, reasoningEffort) },
@@ -804,10 +820,12 @@ export class AgentTeamLlmCardController {
     this.publish()
   }
 
-  private setMemberSandboxMode(index: number, sandboxMode: MemberSandboxMode | ''): void {
+  private setMemberPermissions(index: number, name: string): void {
     const member = this.stagedMember(index)
     if (member === undefined) return
-    member.sandboxMode = sandboxMode
+    const knobs = agentTeamLlmMemberPermissionKnobs(name, this.memberPermissions)
+    member.sandboxMode = knobs.sandboxMode
+    member.approvalPolicy = knobs.approvalPolicy
     this.dropConflicted()
     this.publish()
   }
@@ -970,6 +988,9 @@ export class AgentTeamLlmCardController {
     this.saving = false
     this.drafts.clear()
     this.catalogGroups = []
+    // The options came from the Host connection that is gone.
+    this.memberPermissionsGeneration += 1
+    this.memberPermissions = null
     // A read still crossing the wire answers for the previous connection.
     this.workspaceGeneration += 1
     this.readingWorkspace = false
@@ -980,6 +1001,7 @@ export class AgentTeamLlmCardController {
     this.selectedSession = undefined
     this.resolvedSession = undefined
     this.refreshCatalog()
+    this.refreshMemberPermissions()
     void this.loadWorkspace()
   }
 
@@ -999,6 +1021,28 @@ export class AgentTeamLlmCardController {
       this.catalogStatus = 'error'
     }
     this.publish()
+  }
+
+  /**
+   * Read the permissions options a member row selects from.
+   *
+   * The Host resolves them from the composed permission presets, so this is one
+   * request per catalog change rather than a subscription. A refusal leaves the
+   * options unknown: rows declaring knobs keep showing their machine pair rather
+   * than claiming a preset the Host never confirmed.
+   */
+  private async loadMemberPermissions(): Promise<void> {
+    const generation = (this.memberPermissionsGeneration += 1)
+    const result = await this.documents.listMemberPermissionPresets(this.lifetime.signal)
+    if (generation !== this.memberPermissionsGeneration || this.disposed) return
+    if (result.ok) this.memberPermissions = result.value
+    this.publish()
+  }
+
+  /** Re-read the permissions options after the Host catalog or connection changed. */
+  refreshMemberPermissions(): void {
+    if (this.disposed) return
+    void this.loadMemberPermissions()
   }
 
   /**
@@ -1125,6 +1169,7 @@ export class AgentTeamLlmCardController {
       key: member.route.provider === '' && member.route.model === ''
         ? ''
         : agentTeamLlmRouteKey(member.route),
+      permission: agentTeamLlmMemberPermission(member, this.memberPermissions),
       problems: agentTeamLlmMemberProblem(member, members),
     }))
   }
@@ -1162,6 +1207,7 @@ export class AgentTeamLlmCardController {
       members,
       catalogStatus: this.catalogStatus,
       catalogPartial: this.catalogPartial,
+      memberPermissions: this.memberPermissions,
       conflicted: this.conflicted,
       problems,
     }

@@ -104,6 +104,14 @@ interface SubagentStartRequest {
    */
   readonly sandboxMode?: SandboxMode
   /**
+   * Optional explicit child approval policy. The in-process backend applies it
+   * in place of the `never` pin a delegated child otherwise inherits, so a
+   * caller can hold a delegated child to an explicit policy without changing
+   * the parent's own. Omission keeps the delegation rule: a child whose
+   * approval capability is composed is pinned to `never`.
+   */
+  readonly approvalPolicy?: ApprovalPolicy
+  /**
    * Optional per-child persona. Requires {@link SubagentCapabilities.persona};
    * rejected at start otherwise. In-process backends register it as a scoped
    * `deployment:persona-prefix` section on the child, SHADOWING the deployment's

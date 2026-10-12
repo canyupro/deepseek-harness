@@ -15,6 +15,7 @@ import type { ContentBlock, MessageId } from '@deepseek-ai/dsh-llm'
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type { ObjectJsonSchema, ToolRestriction } from '@deepseek-ai/dsh-tools'
+import type { ApprovalPolicy } from '@deepseek-ai/dsh-user-approval'
 import type { SubagentDescriptorData } from './descriptor.ts'
 
 /** Identifies one accepted subagent run across its lifecycle event pair. */
@@ -199,6 +200,14 @@ export interface SubagentStartRequest {
    * rule: only the parent's explicit sandbox override flows down.
    */
   readonly sandboxMode?: SandboxMode
+  /**
+   * Optional explicit child approval policy. The in-process backend applies it
+   * in place of the `never` pin a delegated child otherwise inherits, so a
+   * caller can hold a delegated child to an explicit policy without changing
+   * the parent's own. Omission keeps the delegation rule: a child whose
+   * approval capability is composed is pinned to `never`.
+   */
+  readonly approvalPolicy?: ApprovalPolicy
   /**
    * Optional per-child persona. Requires {@link SubagentCapabilities.persona};
    * rejected at start otherwise. In-process backends register it as a scoped

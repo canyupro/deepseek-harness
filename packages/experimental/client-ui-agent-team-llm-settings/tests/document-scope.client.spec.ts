@@ -18,7 +18,7 @@ import type { AgentTeamLlmMemberDraft } from '../src/client/team-document.ts'
 function member(overrides: Partial<AgentTeamLlmMemberDraft> = {}): AgentTeamLlmMemberDraft {
   return {
     name: 'recon', description: 'Reads the tree.', prompt: '', context: 'fresh',
-    sandboxMode: '', route: { provider: '', model: '' },
+    sandboxMode: '', approvalPolicy: '', route: { provider: '', model: '' },
     ...overrides,
   }
 }

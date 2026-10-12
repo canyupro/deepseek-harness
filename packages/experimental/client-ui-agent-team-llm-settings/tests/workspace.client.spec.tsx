@@ -60,11 +60,17 @@ function documents(options: {
   const listWorkspaceCandidates = vi.fn(options.candidates ?? (() => Promise.resolve({
     ok: true as const, value: [] as const,
   })))
+  const listMemberPermissionPresets = vi.fn(() => Promise.resolve({
+    ok: true as const, value: { presets: [], custom: { name: 'custom', label: 'custom' } },
+  }))
   return {
-    slice: { readTeamDocument, saveTeamDocument, listWorkspaceCandidates } satisfies AgentTeamLlmTeamDocuments,
+    slice: {
+      readTeamDocument, saveTeamDocument, listWorkspaceCandidates, listMemberPermissionPresets,
+    } satisfies AgentTeamLlmTeamDocuments,
     readTeamDocument,
     saveTeamDocument,
     listWorkspaceCandidates,
+    listMemberPermissionPresets,
   }
 }
 
@@ -367,6 +373,7 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
     members: [],
     catalogStatus: 'ready',
     catalogPartial: false,
+    memberPermissions: null,
     conflicted: false,
     problems: [],
     ...state,
@@ -461,11 +468,13 @@ describe('AgentTeamLlmCard workspace layer', () => {
       members: [
         {
           name: 'scout', description: 'Reads the repository', prompt: '', context: 'fork', sandboxMode: '',
-          key: 'alpha\0fast', route: { provider: 'alpha', model: 'fast' }, problems: [],
+          approvalPolicy: '', key: 'alpha\0fast', route: { provider: 'alpha', model: 'fast' },
+          permission: '', problems: [],
         },
         {
           name: 'writer', description: 'Edits the code', prompt: '', context: 'fresh', sandboxMode: '',
-          key: '', route: { provider: '', model: '' }, problems: ['agentTeamLlmMemberNameFormat'],
+          approvalPolicy: '', key: '', route: { provider: '', model: '' },
+          permission: '', problems: ['agentTeamLlmMemberNameFormat'],
         },
       ],
     })
@@ -700,8 +709,8 @@ describe('AgentTeamLlmCardController candidate retry', () => {
     face.retryWorkspace()
 
     await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
-    // These two fields are the picker's render condition
-    // (`AgentTeamLlmCard.tsx:122` `workspace.candidates.length > 0`).
+    // These two fields are the picker's render condition (`AgentTeamLlmCard`
+    // renders it only while `workspace.candidates.length > 0`).
     expect(state().workspace.candidatesStatus).toBe('ready')
     expect(state().workspace.candidates.map(candidate => candidate.sessionId))
       .toEqual([ALPHA.sessionId, BETA.sessionId])

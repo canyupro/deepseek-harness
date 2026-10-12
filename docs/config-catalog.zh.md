@@ -835,7 +835,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-agent-team`
 
 - `inject`: `agents` · `sessions` · `sessionPersistence` · `sessionProjections` · `subagents`
-- `source`: [`packages/experimental/agent-team/src/types.ts:163`](../packages/experimental/agent-team/src/types.ts)
+- `source`: [`packages/experimental/agent-team/src/types.ts:173`](../packages/experimental/agent-team/src/types.ts)
 
 ```ts config-catalog
 /** Team-service deployment limits. */
@@ -877,7 +877,7 @@ export type MemberSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-a
 
 - `inject`: `sessionQuery`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/experimental/agent-team-llm-settings/src/index.ts:66`](../packages/experimental/agent-team-llm-settings/src/index.ts)
+- `source`: [`packages/experimental/agent-team-llm-settings/src/index.ts:73`](../packages/experimental/agent-team-llm-settings/src/index.ts)
 
 ```ts config-catalog
 /** Optional deployment base for the Team LLM settings. */
@@ -926,6 +926,8 @@ export interface TeamMemberInput {
   readonly context?: TeamMemberContext
   /** Sandbox the member runs in; omission uses the team default. */
   readonly sandboxMode?: MemberSandboxMode
+  /** Approval policy the member runs under; omission uses the team default. */
+  readonly approvalPolicy?: MemberApprovalPolicy
   /** Registered LLM provider route, paired with {@link model}. */
   readonly provider?: string
   /** Provider-owned exact model id, paired with {@link provider}. */
@@ -939,6 +941,9 @@ export type TeamMemberContext = 'fresh' | 'fork'
 
 /** Sandbox scope one fixed team member may run in. */
 export type MemberSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
+
+/** Approval policy one fixed team member may run under. */
+export type MemberApprovalPolicy = 'ask' | 'never'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-agent-team-llm-settings -->
 

@@ -34,6 +34,9 @@
     },
     {
       "path": "../../api/workspace-files/tsconfig.host.json"
+    },
+    {
+      "path": "../../interaction/permission-presets"
     }
   ]
 }

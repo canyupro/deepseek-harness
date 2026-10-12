@@ -1017,6 +1017,29 @@ describe('dsh-tool-team', () => {
     expect(requests.find(request => request.name === 'writer')).not.toHaveProperty('sandboxMode')
   })
 
+  it('passes a member approval policy to spawnTeammate, and omits it when none is declared', async () => {
+    const root = projectRoot()
+    const { ctx, lead } = await setup(['hang', 'hang'], false, root)
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [{ provider: 'mock', model: 'roster-model' }] })
+    installRoster(ctx, [
+      { name: 'recon', description: 'survey the tree', prompt: 'survey the tree', context: 'fresh', approvalPolicy: 'ask' },
+      { name: 'writer', description: 'write the report', prompt: 'write the report', context: 'fresh' },
+    ])
+    // Call through, so the roster really builds; the spy only reads the request.
+    const spawn = vi.spyOn(ctx.agentTeams, 'spawnTeammate')
+
+    const created = await execute(ctx, lead, 'spawn_team', {})
+    expect(created.isError, text(created)).toBe(false)
+
+    const requests = spawn.mock.calls.map(call => call[1])
+    expect(requests).toHaveLength(2)
+    expect(requests.find(request => request.name === 'recon')).toMatchObject({ approvalPolicy: 'ask' })
+    // An undeclared policy must stay absent rather than travel as an explicit
+    // `never`, which would silently pin a teammate against the roster's intent
+    // and hide the difference between "declared" and "left to the default".
+    expect(requests.find(request => request.name === 'writer')).not.toHaveProperty('approvalPolicy')
+  })
+
   it('creates only the requested roster members and reports names outside it', async () => {
     const root = projectRoot()
     const { ctx, lead } = await setup(['hang', 'hang'], false, root)

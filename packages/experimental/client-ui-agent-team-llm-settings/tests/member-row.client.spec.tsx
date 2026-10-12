@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The remaining member-row controls the per-file coverage gate still needs: the
- * prompt textarea and the hand-filled route fields. The sandbox control is
- * covered in `sandbox-mode.client.spec.tsx`.
+ * prompt textarea and the hand-filled route fields. The permission preset
+ * control is covered in `member-permissions.client.spec.tsx`.
  */
 
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
@@ -30,8 +30,10 @@ function member(overrides: Partial<Extract<AgentTeamLlmCardState['members'][numb
     prompt: '',
     context: 'fresh' as const,
     sandboxMode: '' as const,
+    approvalPolicy: '' as const,
     key: '',
     route: { provider: '', model: '' },
+    permission: '',
     problems: [],
     ...overrides,
   }
@@ -51,6 +53,7 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
     members: [member()],
     catalogStatus: 'ready',
     catalogPartial: false,
+    memberPermissions: null,
     conflicted: false,
     problems: [],
     ...state,
@@ -58,7 +61,7 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
   const actions = {
     setScope: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(), setMemberName: vi.fn(),
     setMemberDescription: vi.fn(), setMemberPrompt: vi.fn(), setMemberContext: vi.fn(),
-    setMemberSandboxMode: vi.fn(), setMemberRoute: vi.fn(), setMemberRouteFields: vi.fn(),
+    setMemberPermissions: vi.fn(), setMemberRoute: vi.fn(), setMemberRouteFields: vi.fn(),
     setMemberEffort: vi.fn(), retryWorkspace: vi.fn(), toggleEnabled: vi.fn(), toggleRoute: vi.fn(),
     addAllowedRoute: vi.fn(), removeAllowedRoute: vi.fn(), setRouteEffort: vi.fn(),
     setDefaultRoute: vi.fn(), retryCatalog: vi.fn(), addRole: vi.fn(), removeRole: vi.fn(),

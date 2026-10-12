@@ -4,7 +4,7 @@
  * distinct reasons a workspace layer can be unavailable.
  */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -37,6 +37,7 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
     members: [],
     catalogStatus: 'ready',
     catalogPartial: false,
+    memberPermissions: null,
     conflicted: false,
     problems: [],
     ...state,
@@ -44,7 +45,7 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
   const actions = {
     setScope: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(), setMemberName: vi.fn(),
     setMemberDescription: vi.fn(), setMemberPrompt: vi.fn(), setMemberContext: vi.fn(),
-    setMemberSandboxMode: vi.fn(), setMemberRoute: vi.fn(), setMemberRouteFields: vi.fn(),
+    setMemberPermissions: vi.fn(), setMemberRoute: vi.fn(), setMemberRouteFields: vi.fn(),
     setMemberEffort: vi.fn(), retryWorkspace: vi.fn(), toggleEnabled: vi.fn(), toggleRoute: vi.fn(),
     addAllowedRoute: vi.fn(), removeAllowedRoute: vi.fn(), setRouteEffort: vi.fn(),
     setDefaultRoute: vi.fn(), retryCatalog: vi.fn(), addRole: vi.fn(), removeRole: vi.fn(),
@@ -107,5 +108,49 @@ describe('workspace layer notices', () => {
 
     const [, workspace] = screen.getAllByRole('tab')
     expect(workspace!).toHaveProperty('disabled', true)
+  })
+
+  it('reports a refused workspace read at card level while its tab stays disabled', () => {
+    const { actions } = renderCard({
+      scope: 'global',
+      workspace: { status: 'error', path: undefined, error: 'the session corpus is unavailable', reason: undefined, candidatesStatus: 'error', candidates: [], sessionId: undefined },
+    })
+
+    // Nothing readable backs the workspace tab, so the refusal and its retry
+    // stand in the card instead of behind a tab the operator cannot open.
+    const [, workspace] = screen.getAllByRole('tab')
+    expect(workspace).toHaveProperty('disabled', true)
+
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toContain(en.agentTeamLlmWorkspaceLoadFailed)
+    expect(alert.textContent).toContain('the session corpus is unavailable')
+    fireEvent.click(within(alert).getByRole('button', { name: en.agentTeamLlmWorkspaceRetry }))
+
+    expect(actions.retryWorkspace).toHaveBeenCalledOnce()
+  })
+
+  it('leaves the single refusal alert to the open workspace tab', () => {
+    renderCard({
+      scope: 'workspace',
+      workspace: { status: 'error', path: undefined, error: 'the session corpus is unavailable', reason: undefined, candidatesStatus: 'error', candidates: [], sessionId: undefined },
+    })
+
+    // The card-level notice stands down in the workspace layer, so one refusal
+    // is never announced twice at once.
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(screen.getByRole('alert').textContent).toContain(en.agentTeamLlmWorkspaceLoadFailed)
+  })
+
+  it('reports a refusal that carries no Host text as the bare failure copy', () => {
+    renderCard({
+      scope: 'global',
+      workspace: { status: 'error', path: undefined, error: undefined, reason: undefined, candidatesStatus: 'error', candidates: [], sessionId: undefined },
+    })
+
+    // A refusal may arrive without text; the notice still names the failure
+    // rather than rendering an empty or undefined suffix.
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toContain(en.agentTeamLlmWorkspaceLoadFailed)
+    expect(alert.textContent).not.toContain('undefined')
   })
 })

@@ -28,6 +28,9 @@ export interface TeamRoleRouteDocument extends TeamRouteDocument {
 /** Sandbox scope one fixed team member may run in. */
 export type MemberSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 
+/** Approval policy one fixed team member may run under. */
+export type MemberApprovalPolicy = 'ask' | 'never'
+
 /** One fixed team member declared in the workspace document. */
 export interface TeamMemberDocument {
   /** Teammate name; lowercase kebab-case, unique in the document, never `lead`. */
@@ -40,6 +43,8 @@ export interface TeamMemberDocument {
   readonly context?: TeamMemberContext
   /** Sandbox the member runs in; omission keeps the delegation's own default. */
   readonly sandboxMode?: MemberSandboxMode
+  /** Approval policy the member runs under; omission keeps the delegation's own default. */
+  readonly approvalPolicy?: MemberApprovalPolicy
   /** Registered LLM provider route, paired with {@link model}. */
   readonly provider?: string
   /** Provider-owned exact model id, paired with {@link provider}. */
@@ -78,12 +83,40 @@ export interface TeamMemberConfig {
   readonly context: TeamMemberContext
   /** Sandbox the member runs in; omission keeps the team's own default. */
   readonly sandboxMode?: MemberSandboxMode
+  /** Approval policy the member runs under; omission keeps the team's own default. */
+  readonly approvalPolicy?: MemberApprovalPolicy
   /** Registered LLM provider route, paired with {@link model}. */
   readonly provider?: string
   /** Provider-owned exact model id, paired with {@link provider}. */
   readonly model?: string
   /** Adapter-owned reasoning effort; omission uses the model default. */
   readonly reasoningEffort?: ReasoningEffortId
+}
+
+/** Identity and display copy of one member permissions option. */
+export interface TeamMemberPermissionOption {
+  /** Option identity the selector carries. */
+  readonly name: string
+  /** Display label the permission domain owns. */
+  readonly label: string
+  /** One user-facing sentence on what the option means; omitted when the deployment configured none. */
+  readonly description?: string
+}
+
+/** One configured preset a roster member may select, with the knobs it writes. */
+export interface TeamMemberPermissionPreset extends TeamMemberPermissionOption {
+  /** Sandbox the preset writes. */
+  readonly sandbox: MemberSandboxMode
+  /** Approval policy the preset writes. */
+  readonly approval: MemberApprovalPolicy
+}
+
+/** The member permissions options the Host serves. */
+export interface TeamMemberPermissionCatalog {
+  /** Configured presets eligible as durable member permissions, in deployment order. */
+  readonly presets: readonly TeamMemberPermissionPreset[]
+  /** The derived value for a member whose knobs match no configured preset. */
+  readonly custom: TeamMemberPermissionOption
 }
 
 /** One workspace document read: its location and contents. */

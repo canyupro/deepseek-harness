@@ -9,8 +9,8 @@
   en: b28084855adcdabd
   zh: 59e3d49c3d63baf9
 /deepseek-ai-dsh-experimental-agent-team/summary:
-  en: 5b981abe3a308e53
-  zh: 7116e552a40dc79f
+  en: 36c0294d931fb5c7
+  zh: bd5997c254c896ca
 /deepseek-ai-dsh-experimental-agent-team/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -24,8 +24,11 @@
   en: 4fccad6758905210
   zh: 9037ddb1dc4b2666
 /deepseek-ai-dsh-experimental-agent-team/use-this-package/teammates:
-  en: 3807235b958da8bb
-  zh: e5a33c732edcf749
+  en: 0520c130d65b1fad
+  zh: f5062ab48631be44
+/deepseek-ai-dsh-experimental-agent-team/use-this-package/switching-a-teammate-s-permission-preset:
+  en: 806d99b547a93c2f
+  zh: 8cf8de50412a6437
 /deepseek-ai-dsh-experimental-agent-team/use-this-package/messages-between-teammates:
   en: 2c45b2c18c8317e7
   zh: d4ab2259f976b19d
@@ -42,8 +45,8 @@
   en: 6a18034f1ccc247a
   zh: e08b0eb0ccb41ea8
 /deepseek-ai-dsh-experimental-agent-team/understand-the-implementation/design-philosophy:
-  en: c08e8eb5bbac71ae
-  zh: d6fb32f1243a28d6
+  en: 0fe2035b6607a501
+  zh: 051fc62c5ac73bb3
 /deepseek-ai-dsh-experimental-agent-team/understand-the-implementation/source-map:
   en: 4e4189d2009a4e42
   zh: 0ccbf29cf78f10af
@@ -69,8 +72,8 @@
   en: 020d07f96ef2077d
   zh: 9e771d38a02048e1
 /deepseek-ai-dsh-experimental-agent-team/further-exploration/browser-projection:
-  en: 4b3033806e6db528
-  zh: 53e0dfef7309840e
+  en: 47d7b8798cde2df5
+  zh: 2fe9fa04fddfbb7e
 /deepseek-ai-dsh-experimental-agent-team/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -81,14 +84,14 @@
   en: 4f9110ba058f25cd
   zh: cf820293929ea993
 /deepseek-ai-dsh-experimental-agent-team/model-experience/peer-messages/token-effect:
-  en: 37ec43beac34a6ad
-  zh: 6cdcd89ccceea815
+  en: 68f09ade4ff0570d
+  zh: 3e8df72176686521
 /deepseek-ai-dsh-experimental-agent-team/model-experience/peer-messages/kv-cache-effect:
   en: ff845d434b857afe
   zh: 04479bddf7650ede
 /deepseek-ai-dsh-experimental-agent-team/known-limitations-and-deferred-work:
-  en: 777abba6e3b496eb
-  zh: 2b8cd95e73f5e369
+  en: e9a76a8fffac2df8
+  zh: 13377dd8554765c2
 /deepseek-ai-dsh-experimental-agent-team/known-limitations-and-deferred-work/dev-note:
   en: 498e4cf9fe5741a7
   zh: 9d2bab630e655c99

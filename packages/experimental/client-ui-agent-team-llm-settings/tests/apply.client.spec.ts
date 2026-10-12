@@ -72,6 +72,9 @@ async function bench(served?: string[]) {
       ok: true as const, value: { path: '/project/.dsh/team.json' },
     })),
     listWorkspaceCandidates: vi.fn(() => Promise.resolve({ ok: true as const, value: [] })),
+    listMemberPermissionPresets: vi.fn(() => Promise.resolve({
+      ok: true as const, value: { presets: [], custom: { name: 'custom', label: 'custom' } },
+    })),
   })
   ctx.provide('sessions', {
     list: {

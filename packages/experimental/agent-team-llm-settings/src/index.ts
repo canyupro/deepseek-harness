@@ -4,12 +4,17 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Volatile } from '@deepseek-ai/cordis'
 import type { WorkspaceFileScope } from '@deepseek-ai/dsh-api-workspace-files'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+// Type-only: resolves `ctx.get('permissionPresets')` to the permission domain's
+// service when one is composed — the member permissions list consumes it
+// opportunistically (the documented `ctx.get` pattern), never as a hard dep.
+import type { PermissionPresetService } from '@deepseek-ai/dsh-permission-presets'
 // Type-only: pulls the SessionQuery service merge (ctx.sessionQuery).
 import type {} from '@deepseek-ai/dsh-session-query'
 import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { FRESH_MEMBER_CONTEXT, LEAD_TEAM_NAME, TEAM_MEMBER_NAME, TeamDocumentError, parseTeamDocument } from './document.ts'
 import type {
+  MemberApprovalPolicy,
   MemberSandboxMode,
   TeamDocument,
   TeamDocumentPath,
@@ -17,6 +22,8 @@ import type {
   TeamMemberConfig,
   TeamMemberContext,
   TeamMemberDocument,
+  TeamMemberPermissionCatalog,
+  TeamMemberPermissionPreset,
   WorkspaceSessionCandidate,
 } from './types.ts'
 import { findProjectRoot, readDocumentFile, teamDocumentPath, writeDocumentFile } from './workspace-document.ts'
@@ -108,6 +115,8 @@ export interface TeamMemberInput {
   readonly context?: TeamMemberContext
   /** Sandbox the member runs in; omission uses the team default. */
   readonly sandboxMode?: MemberSandboxMode
+  /** Approval policy the member runs under; omission uses the team default. */
+  readonly approvalPolicy?: MemberApprovalPolicy
   /** Registered LLM provider route, paired with {@link model}. */
   readonly provider?: string
   /** Provider-owned exact model id, paired with {@link provider}. */
@@ -122,6 +131,14 @@ export interface TeamMemberInput {
  * unbounded list would grow with every Session the host has ever kept.
  */
 const WORKSPACE_CANDIDATE_LIMIT = 20
+
+/**
+ * Option value the permission domain derives for knob values matching no
+ * configured preset. Fixed protocol constant: `optionOf` accepts exactly this
+ * name, and this package reads the permission domain opportunistically rather
+ * than taking a value dependency on it.
+ */
+const CUSTOM_PRESET_NAME = 'custom'
 
 const routeSchema = z.object({
   provider: z.string().min(1).required(),
@@ -145,6 +162,7 @@ const memberSchema = z.object({
   model: z.string().min(1),
   reasoningEffort: z.string().min(1),
   sandboxMode: z.union(['read-only', 'workspace-write', 'danger-full-access']),
+  approvalPolicy: z.union(['ask', 'never']),
 }).description('One fixed team member.')
 
 /**
@@ -197,6 +215,7 @@ function resolveMembers(inputs: readonly TeamMemberInput[], maxMembers: number):
       ...input.prompt === undefined ? {} : { prompt: input.prompt },
       context: input.context ?? FRESH_MEMBER_CONTEXT,
       ...input.sandboxMode === undefined ? {} : { sandboxMode: input.sandboxMode },
+      ...input.approvalPolicy === undefined ? {} : { approvalPolicy: input.approvalPolicy },
       ...input.provider === undefined ? {} : { provider: input.provider },
       ...input.model === undefined ? {} : { model: input.model },
       ...input.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(input.reasoningEffort) },
@@ -216,6 +235,7 @@ function resolveDocumentMember(member: TeamMemberDocument): TeamMemberConfig {
     ...member.prompt === undefined ? {} : { prompt: member.prompt },
     context: member.context ?? FRESH_MEMBER_CONTEXT,
     ...member.sandboxMode === undefined ? {} : { sandboxMode: member.sandboxMode },
+    ...member.approvalPolicy === undefined ? {} : { approvalPolicy: member.approvalPolicy },
     ...member.provider === undefined ? {} : { provider: member.provider },
     ...member.model === undefined ? {} : { model: member.model },
     ...member.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(member.reasoningEffort) },
@@ -442,7 +462,7 @@ export class AgentTeamLlmSettings extends TypertRemoteService {
    * headless composition does not mount, so it takes no part in this order and
    * a candidate created earlier but used later ranks below this one.
    * @param signal - caller cancellation.
-   * @returns at most {@link WORKSPACE_CANDIDATE_LIMIT} candidates, newest-created first.
+   * @returns at most the newest 20 candidates, newest-created first.
    * @throws Error when the caller aborted.
    */
   @Remote
@@ -458,6 +478,49 @@ export class AgentTeamLlmSettings extends TypertRemoteService {
       })
       .sort((left, right) => right.createdAt - left.createdAt)
       .slice(0, WORKSPACE_CANDIDATE_LIMIT)
+  }
+
+  /**
+   * List the permissions options a roster member may select.
+   *
+   * The roster stores a member's sandbox mode and approval policy rather than a
+   * preset name, so it needs the knobs behind each name. The permission domain
+   * owns the names, labels, and the derived not-a-preset value for a pair that
+   * matches no configured preset; this Remote adds only the knob pair. It lists
+   * the configured presets eligible as durable defaults — `defaultOptions`, not
+   * every live option — because the current-session Auto preset is not a
+   * composable roster identity.
+   * @param signal - caller cancellation.
+   * @returns the configured presets and the derived not-a-preset option.
+   * @throws Error when the caller aborted.
+   */
+  @Remote
+  listMemberPermissionPresets(signal: AbortSignal): TeamMemberPermissionCatalog {
+    signal.throwIfAborted()
+    const presets: PermissionPresetService | undefined = this.ctx.get('permissionPresets')
+    if (presets === undefined) {
+      // A composition without the permission domain has no configured preset to
+      // offer, so a stored pair has no name and reads as the derived token.
+      return { presets: [], custom: { name: CUSTOM_PRESET_NAME, label: CUSTOM_PRESET_NAME } }
+    }
+    const custom = presets.optionOf(CUSTOM_PRESET_NAME)
+    return {
+      presets: presets.catalog().defaultOptions.map((option): TeamMemberPermissionPreset => {
+        const spec = presets.resolve(option.value)
+        return {
+          name: option.value,
+          label: option.name,
+          sandbox: spec.sandbox,
+          approval: spec.approval,
+          ...option.description === undefined ? {} : { description: option.description },
+        }
+      }),
+      custom: {
+        name: custom.value,
+        label: custom.name,
+        ...custom.description === undefined ? {} : { description: custom.description },
+      },
+    }
   }
 
   /**

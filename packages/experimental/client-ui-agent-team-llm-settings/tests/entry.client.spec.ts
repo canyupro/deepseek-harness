@@ -51,6 +51,7 @@ async function bench(options: Options = {}) {
   ctx.provide('locale', locale)
 
   const mounted: TypertRemoteContribution[] = []
+  const listeners = new Map<TypertRemoteEvent, Set<() => void>>()
   class Remote extends Service {
     readonly $host = { home: undefined, isLoopback: true }
 
@@ -61,8 +62,11 @@ async function bench(options: Options = {}) {
       return async () => {}
     }
 
-    $on(_event: TypertRemoteEvent, _listener: (...args: never[]) => void): () => void {
-      return () => {}
+    $on(event: TypertRemoteEvent, listener: (...args: never[]) => void): () => void {
+      const set = listeners.get(event) ?? new Set<() => void>()
+      set.add(listener)
+      listeners.set(event, set)
+      return () => { set.delete(listener) }
     }
   }
   // The Service constructor registers `remote` on the context itself.
@@ -83,10 +87,14 @@ async function bench(options: Options = {}) {
   const listWorkspaceCandidates = vi.fn<(...args: never[]) => Promise<unknown>>(
     options.listWorkspaceCandidates ?? (() => Promise.resolve({ ok: true as const, value: [] })),
   )
+  const listMemberPermissionPresets = vi.fn(() => Promise.resolve({
+    ok: true as const, value: { presets: [], custom: { name: 'custom', label: 'custom' } },
+  }))
   ctx.provide('remote.agentTeamLlm', {
     readTeamDocument,
     saveTeamDocument: vi.fn(() => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } })),
     listWorkspaceCandidates,
+    listMemberPermissionPresets,
   })
   ctx.provide('sessions', {
     list: {
@@ -105,7 +113,11 @@ async function bench(options: Options = {}) {
     name: 'root',
     children: { 'plugins.item': { kind: 'list', scope: 'root' } },
   } as never, () => null)
-  return { ctx, mounted, slots, readTeamDocument, listWorkspaceCandidates }
+  return {
+    ctx, mounted, slots, readTeamDocument, listWorkspaceCandidates, listMemberPermissionPresets,
+    // Forward one Host event to the listeners the card registered for it.
+    emit: (event: TypertRemoteEvent) => { for (const listener of listeners.get(event) ?? []) listener() },
+  }
 }
 
 describe('shipped browser entry', () => {
@@ -206,6 +218,22 @@ describe('shipped browser entry', () => {
     // A dead directory leaves the configured page present with an error surface
     // rather than silently removing the entry.
     await vi.waitFor(() => { expect(slots.entries('plugins.item')).toHaveLength(1) })
+
+    await dispose()
+  })
+
+  it('re-reads the member permission options when the permission catalog changes', async () => {
+    const { ctx, emit, listMemberPermissionPresets } = await bench({
+      rows: [row('session-a', 1, { mainView: 1 })],
+    })
+
+    const dispose = await apply(ctx)
+
+    await vi.waitFor(() => { expect(listMemberPermissionPresets).toHaveBeenCalledOnce() })
+    emit('permission-presets/catalog-changed')
+    // The preset table belongs to the permission domain, so its invalidation
+    // reaches the card without any settings document change.
+    await vi.waitFor(() => { expect(listMemberPermissionPresets).toHaveBeenCalledTimes(2) })
 
     await dispose()
   })

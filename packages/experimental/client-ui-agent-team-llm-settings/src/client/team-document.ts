@@ -8,6 +8,7 @@
 // `WorkspaceFileScope` parameter arrives as the Session identity the Host
 // resolves to a workspace root.
 import type {} from '@deepseek-ai/dsh-experimental-agent-team-llm-settings/remote'
+import type { TeamMemberPermissionCatalog } from '@deepseek-ai/dsh-experimental-agent-team-llm-settings'
 import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 import type { AgentTeamLlmRoleRoute, AgentTeamLlmRoute } from './agent-team-llm-card-controller.ts'
 
@@ -19,6 +20,9 @@ const RESERVED_NAME = 'lead'
 
 /** Sandbox scope one stored member may declare; the empty string inherits. */
 export type MemberSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
+
+/** Approval policy one stored member may declare; the empty string inherits. */
+export type MemberApprovalPolicy = 'ask' | 'never'
 
 /** One workspace member as the Host stores it. */
 export interface AgentTeamLlmTeamMember {
@@ -32,6 +36,8 @@ export interface AgentTeamLlmTeamMember {
   context?: 'fresh' | 'fork'
   /** Sandbox the member runs in; omission keeps the team's own default. */
   sandboxMode?: MemberSandboxMode
+  /** Approval policy the member runs under; omission keeps the team's own default. */
+  approvalPolicy?: MemberApprovalPolicy
   /** Provider this member runs on; an omitted pair means the Lead's route. */
   provider?: string
   /** Model this member runs on; always paired with `provider`. */
@@ -99,6 +105,8 @@ export interface AgentTeamLlmMemberDraft {
   context: 'fresh' | 'fork'
   /** Staged sandbox scope; the empty string inherits the team default. */
   sandboxMode: MemberSandboxMode | ''
+  /** Staged approval policy; the empty string inherits the team default. */
+  approvalPolicy: MemberApprovalPolicy | ''
   /** Staged route; empty provider and model mean the Lead's route. */
   route: AgentTeamLlmRoute
 }
@@ -107,6 +115,13 @@ export interface AgentTeamLlmMemberDraft {
 export interface AgentTeamLlmMemberState extends AgentTeamLlmMemberDraft {
   /** Selected route key; the empty string means the member inherits the Lead's route. */
   key: string
+  /**
+   * Selected permissions option: the empty string inherits the team default, a
+   * configured preset name is that preset, and the Host's derived value covers
+   * every other pair. Until the Host answers with its catalog, a row declaring
+   * knobs carries their machine pair so the selector can still show it.
+   */
+  permission: string
   /** Rules this row would have the Host refuse a save for; empty when it is accepted. */
   problems: readonly AgentTeamLlmMemberProblemKey[]
 }
@@ -116,7 +131,15 @@ export interface AgentTeamLlmMemberState extends AgentTeamLlmMemberDraft {
  * @returns the draft row with every field at its inherit-or-empty default.
  */
 export function emptyAgentTeamLlmMember(): AgentTeamLlmMemberDraft {
-  return { name: '', description: '', prompt: '', context: 'fresh', sandboxMode: '', route: { provider: '', model: '' } }
+  return {
+    name: '',
+    description: '',
+    prompt: '',
+    context: 'fresh',
+    sandboxMode: '',
+    approvalPolicy: '',
+    route: { provider: '', model: '' },
+  }
 }
 
 /** Detach one stored member from the document it was decoded from. */
@@ -127,6 +150,7 @@ function copyMember(member: AgentTeamLlmTeamMember): AgentTeamLlmMemberDraft {
     prompt: member.prompt ?? '',
     context: member.context ?? 'fresh',
     sandboxMode: member.sandboxMode ?? '',
+    approvalPolicy: member.approvalPolicy ?? '',
     route: {
       provider: member.provider ?? '',
       model: member.model ?? '',
@@ -158,6 +182,7 @@ export function agentTeamLlmTeamMemberOf(draft: AgentTeamLlmMemberDraft): AgentT
     ...draft.prompt === '' ? {} : { prompt: draft.prompt },
     context: draft.context,
     ...draft.sandboxMode === '' ? {} : { sandboxMode: draft.sandboxMode },
+    ...draft.approvalPolicy === '' ? {} : { approvalPolicy: draft.approvalPolicy },
     ...draft.route.provider === '' ? {} : {
       provider: draft.route.provider,
       model: draft.route.model,
@@ -203,6 +228,53 @@ export function agentTeamLlmMemberProblem(
 }
 
 /**
+ * Which permissions option one member row selects.
+ *
+ * The selector binds one value while the document stores two knobs, so a row
+ * declaring neither knob inherits, a row declaring exactly one configured
+ * preset's pair selects that preset, and any other pair selects the Host's
+ * derived value. Until the Host answers, a row declaring knobs carries their
+ * machine pair, which no option matches and the selector shows as its own
+ * disabled row rather than claiming an option the Host never confirmed.
+ * @param member - member row carrying the two permission knobs.
+ * @param catalog - permissions options the Host serves, or null before it answers.
+ * @returns the option value the selector binds, or the row's machine pair.
+ */
+export function agentTeamLlmMemberPermission(
+  member: Pick<AgentTeamLlmMemberDraft, 'sandboxMode' | 'approvalPolicy'>,
+  catalog: TeamMemberPermissionCatalog | null,
+): string {
+  if (member.sandboxMode === '' && member.approvalPolicy === '') return ''
+  const preset = catalog?.presets.find(entry => (
+    entry.sandbox === member.sandboxMode && entry.approval === member.approvalPolicy
+  ))
+  if (preset !== undefined) return preset.name
+  if (catalog !== null) return catalog.custom.name
+  return `${member.sandboxMode}|${member.approvalPolicy}`
+}
+
+/**
+ * The knobs one selected permissions option writes.
+ *
+ * Every option other than a configured preset writes neither knob, so the
+ * member inherits the team default: the Host's derived value is a display state
+ * that is never a switch target, and an option the Host no longer advertises
+ * must not invent a pair.
+ * @param name - selected option value, or the empty string for inherit.
+ * @param catalog - permissions options the Host serves, or null before it answers.
+ * @returns the two permission knobs to stage.
+ */
+export function agentTeamLlmMemberPermissionKnobs(
+  name: string,
+  catalog: TeamMemberPermissionCatalog | null,
+): { sandboxMode: MemberSandboxMode | ''; approvalPolicy: MemberApprovalPolicy | '' } {
+  const preset = catalog?.presets.find(entry => entry.name === name)
+  return preset === undefined
+    ? { sandboxMode: '', approvalPolicy: '' }
+    : { sandboxMode: preset.sandbox, approvalPolicy: preset.approval }
+}
+
+/**
  * Whether two member rows would store the same member.
  * @param left - one staged member row.
  * @param right - the member row to compare against it.
@@ -217,6 +289,7 @@ export function sameAgentTeamLlmMember(
     && left.prompt === right.prompt
     && left.context === right.context
     && left.sandboxMode === right.sandboxMode
+    && left.approvalPolicy === right.approvalPolicy
     && left.route.provider === right.route.provider
     && left.route.model === right.route.model
     && left.route.reasoningEffort === right.route.reasoningEffort

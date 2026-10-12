@@ -294,6 +294,7 @@ export class TeamRoster {
           parent: root,
           ...request.agentOptions === undefined ? {} : { agentOptions: request.agentOptions },
           sandboxMode: request.sandboxMode,
+          ...request.approvalPolicy === undefined ? {} : { approvalPolicy: request.approvalPolicy },
         },
         signal,
       })

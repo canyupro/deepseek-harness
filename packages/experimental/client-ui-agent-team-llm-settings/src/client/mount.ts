@@ -76,6 +76,13 @@ function registerUi(ctx: Context): void {
     () => ctx.remote.$on('settings/document-updated', () => { card.refreshCatalog() }),
     'client-ui-agent-team-llm-settings: settings invalidations',
   )
+  // A member row names its permissions option, and that catalog is the
+  // permission domain's rather than this card's, so it changes without any
+  // settings edit this card follows.
+  ctx.effect(
+    () => ctx.remote.$on('permission-presets/catalog-changed', () => { card.refreshMemberPermissions() }),
+    'client-ui-agent-team-llm-settings: permission catalog invalidations',
+  )
   ctx.effect(
     () => ctx.on('connection/reset', () => { card.resetConnection() }),
     'client-ui-agent-team-llm-settings: connection generation',
