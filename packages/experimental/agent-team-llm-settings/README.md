@@ -24,7 +24,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the service next to `@deepseek-ai/dsh-experimental-agent-team` and `@deepseek-ai/dsh-experimental-tool-agent-team`. `@deepseek-ai/dsh-experimental-agent-team-profile` already mounts it.
+Mount the service next to `@deepseek-ai/dsh-experimental-agent-team` and `@deepseek-ai/dsh-experimental-tool-agent-team`. It injects `ctx.sessionQuery` to answer `listWorkspaceCandidates`, so the composition must also provide a Session query service; without one the service stays pending. `@deepseek-ai/dsh-experimental-agent-team-profile` already mounts it.
 
 ```yaml
 - id: agent-team-llm-settings
@@ -84,11 +84,13 @@ A project pins its own team by committing `<projectRoot>/.dsh/team.json`:
 }
 ```
 
+The workspace layer is resolved from a Session identity: the browser sends that Session's workspace scope, and the Host walks up from its working directory to the nearest ancestor holding `.git`. A surface with no live Session of its own — the plugin settings page — has no identity to send, so the client picks one from `listWorkspaceCandidates` and uses it in place of its own; the picker defaults to the first candidate, which is the most recently created one.
+
 Every field except `version` is optional and overrides only the global field it names; an omitted field inherits the global value. `members` is the exception: it merges by name, so a declared member replaces the global member of that name and a new name appends after the global roster, while a document that declares no `members` keeps the global roster unchanged. `members` entries take `name` and `description`, and optionally `prompt`, `context` (`fresh` by default), `sandboxMode` (`read-only`, `workspace-write`, or `danger-full-access`; omission keeps the team's own default), `provider`, `model`, and `reasoningEffort`; a declared `provider` needs its `model`. Each `allowedRoutes` and `roleRoutes` entry also takes an optional `reasoningEffort`. A member's own route takes precedence over the name preset for that member. `description` must be a non-empty string in both layers, so a `team.json` carrying an empty description is now rejected and has to be corrected.
 
 ### What you get
 
-The service `ctx.agentTeamLlm` exposes `current()` for the global layer, `resolveFor(workspaceRoot)` for the merged value, `readWorkspaceDocument(root)` and `saveWorkspaceDocument(root, document)` for the document itself, and `routeFor(name)` for one member's route. Two `agentTeamLlm` Remotes serve the browser: `readTeamDocument` and `saveTeamDocument`. Both take a Session's workspace scope, derive `<scope root>/.dsh/team.json` on the Host, and never accept a path from the wire. Teammates keep their own durable route, so a preset applies to every future creation of that name and a teammate resumes on the route its descriptor recorded.
+The service `ctx.agentTeamLlm` exposes `current()` for the global layer, `resolveFor(workspaceRoot)` for the merged value, `readWorkspaceDocument(root)` and `saveWorkspaceDocument(root, document)` for the document itself, and `routeFor(name)` for one member's route. Two `agentTeamLlm` Remotes serve the browser: `readTeamDocument` and `saveTeamDocument`. Both take a Session's workspace scope, derive `<scope root>/.dsh/team.json` on the Host, and never accept a path from the wire. A third Remote, `listWorkspaceCandidates`, takes no scope and answers with at most 20 top-level Sessions that carry a working directory, ordered by creation time newest first, so a caller with no Session of its own can still pick one to send as its scope. A subagent child is left out because it runs inside its parent's workspace and would offer the same directory twice. The order is by creation time rather than recent use: a durable Session's last-prompt time belongs to the GUI API's session-list projection, which the headless composition does not mount, so it takes no part in this order. Teammates keep their own durable route, so a preset applies to every future creation of that name and a teammate resumes on the route its descriptor recorded.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation

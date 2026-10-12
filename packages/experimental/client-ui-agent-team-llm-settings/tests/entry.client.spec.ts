@@ -10,7 +10,7 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TypertRemoteContribution, TypertRemoteEvent } from '@deepseek-ai/dsh-typert-protocol'
 import { RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
@@ -26,8 +26,8 @@ function view(ns: string) {
 }
 
 /** One Session catalog row; `mainView` decides whether the main view retains it. */
-function row(id: string, updatedAt: number, retainedBy: { mainView?: number }) {
-  return { id: id as SessionId, retainedBy, updatedAt }
+function row(id: string, createdAt: number, retainedBy: { mainView?: number }) {
+  return { id: id as SessionId, retainedBy, createdAt }
 }
 
 interface Options {
@@ -37,6 +37,8 @@ interface Options {
   catalog?: () => Promise<unknown>
   /** The project document answer. */
   read?: () => Promise<unknown>
+  /** The offered workspace candidates. */
+  listWorkspaceCandidates?: () => Promise<unknown>
 }
 
 /** A browser composition serving the settings namespace. */
@@ -78,9 +80,13 @@ async function bench(options: Options = {}) {
   const readTeamDocument = vi.fn<(...args: never[]) => Promise<unknown>>(options.read ?? (() => Promise.resolve({
     ok: true as const, value: { path: '/project/.dsh/team.json', document: { version: 1 as const } },
   })))
+  const listWorkspaceCandidates = vi.fn<(...args: never[]) => Promise<unknown>>(
+    options.listWorkspaceCandidates ?? (() => Promise.resolve({ ok: true as const, value: [] })),
+  )
   ctx.provide('remote.agentTeamLlm', {
     readTeamDocument,
     saveTeamDocument: vi.fn(() => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } })),
+    listWorkspaceCandidates,
   })
   ctx.provide('sessions', {
     list: {
@@ -99,7 +105,7 @@ async function bench(options: Options = {}) {
     name: 'root',
     children: { 'plugins.item': { kind: 'list', scope: 'root' } },
   } as never, () => null)
-  return { ctx, mounted, slots, readTeamDocument }
+  return { ctx, mounted, slots, readTeamDocument, listWorkspaceCandidates }
 }
 
 describe('shipped browser entry', () => {
@@ -121,19 +127,44 @@ describe('shipped browser entry', () => {
     expect(slots.entries('plugins.item')).toHaveLength(0)
   })
 
-  it('falls back to the most recently updated Session when no view retains one', async () => {
+  it('falls back to the Host\'s newest-created candidate when no view retains one', async () => {
+    const listWorkspaceCandidates = vi.fn(() => Promise.resolve({
+      ok: true as const,
+      value: [
+        { sessionId: SessionId('new'), cwd: '/projects/new', createdAt: 20 },
+        { sessionId: SessionId('old'), cwd: '/projects/old', createdAt: 10 },
+      ],
+    }))
     const { ctx, readTeamDocument } = await bench({
-      // Two sessions, neither retained by a main view: the newer one is the
-      // subject the card reads the project document for. Catalog order is
-      // deliberately newest-first, so the reducer has to keep its incumbent
-      // rather than always taking the row it is handed.
-      rows: [row('new', 2, {}), row('old', 1, {})],
+      // No main view retains a session, so the browser table resolves nothing and
+      // the card falls back to what the Host offers. The Host ranks by header
+      // creation time, so the newer-created candidate is the subject it reads.
+      rows: [row('catalog-only', 2, {})],
+      listWorkspaceCandidates,
     })
 
     const dispose = await apply(ctx)
 
     await vi.waitFor(() => { expect(readTeamDocument).toHaveBeenCalled() })
+    expect(listWorkspaceCandidates).toHaveBeenCalledOnce()
     expect(readTeamDocument.mock.calls[0]?.[0]).toBe('new')
+
+    await dispose()
+  })
+
+  it('never reads a project document while the Host offers no candidate', async () => {
+    const listWorkspaceCandidates = vi.fn(() => Promise.resolve({ ok: true as const, value: [] }))
+    const { ctx, readTeamDocument } = await bench({
+      rows: [row('catalog-only', 2, {})],
+      listWorkspaceCandidates,
+    })
+
+    const dispose = await apply(ctx)
+
+    await vi.waitFor(() => { expect(listWorkspaceCandidates).toHaveBeenCalled() })
+    // A retained session is what the catalog row would have supplied; without
+    // one and with an empty candidate list, the layer stays unavailable.
+    expect(readTeamDocument).not.toHaveBeenCalled()
 
     await dispose()
   })

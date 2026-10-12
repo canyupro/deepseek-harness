@@ -185,6 +185,27 @@ async saveWorkspaceDocument(root: string, document: TeamDocument): Promise<strin
 @Remote readTeamDocument(workspaceFileScope: WorkspaceFileScope, signal: AbortSignal): TeamDocumentRead
 
 /**
+ * List the Sessions a workspace team document can be edited for.
+ *
+ * A caller with no Session of its own — the plugin settings page, where no
+ * Session is live — still needs one identity to resolve a project root from.
+ * Only top-level Sessions qualify: a subagent child runs inside its parent's
+ * workspace, and listing one as a separate choice would offer the picker the
+ * same directory twice. A Session whose header carries no working directory
+ * is skipped, because the document Remote resolves a project root by walking
+ * up from that directory.
+ *
+ * The order key is the header's creation time. A durable Session's
+ * last-prompt time belongs to the GUI API session-list projection, which the
+ * headless composition does not mount, so it takes no part in this order and
+ * a candidate created earlier but used later ranks below this one.
+ * @param signal - caller cancellation.
+ * @returns at most {@link WORKSPACE_CANDIDATE_LIMIT} candidates, newest-created first.
+ * @throws Error when the caller aborted.
+ */
+@Remote async listWorkspaceCandidates(signal: AbortSignal): Promise<readonly WorkspaceSessionCandidate[]>
+
+/**
  * Validate and atomically write the workspace document for one Session's workspace.
  *
  * The path is derived from the Session's workspace root, never from the wire.

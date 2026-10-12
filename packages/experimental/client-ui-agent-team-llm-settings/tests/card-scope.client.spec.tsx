@@ -28,7 +28,7 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
   const store = createSnapshotStore<AgentTeamLlmCardState>({
     ...shell,
     scope: 'global',
-    workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined, reason: undefined },
+    workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined, reason: undefined, candidatesStatus: 'ready', candidates: [], sessionId: undefined },
     enabled: true,
     candidates: [],
     allowed: [],
@@ -82,17 +82,17 @@ describe('card scope tabs', () => {
 
 describe('workspace layer notices', () => {
   it('reports a layer that is still being read', () => {
-    renderCard({ workspace: { status: 'loading', path: undefined, error: undefined, reason: undefined } })
+    renderCard({ workspace: { status: 'loading', path: undefined, error: undefined, reason: undefined, candidatesStatus: 'idle', candidates: [], sessionId: undefined } })
 
     expect(screen.getByRole('status').textContent).toBe(en.agentTeamLlmWorkspaceLoading)
   })
 
   it('names no session separately from no project root', () => {
-    renderCard({ workspace: { status: 'unavailable', path: undefined, error: undefined, reason: 'noSession' } })
+    renderCard({ workspace: { status: 'unavailable', path: undefined, error: undefined, reason: 'noSession', candidatesStatus: 'ready', candidates: [], sessionId: undefined } })
     expect(screen.getByRole('status').textContent).toBe(en.agentTeamLlmWorkspaceNoSession)
 
     cleanup()
-    renderCard({ workspace: { status: 'unavailable', path: undefined, error: undefined, reason: 'noProjectRoot' } })
+    renderCard({ workspace: { status: 'unavailable', path: undefined, error: undefined, reason: 'noProjectRoot', candidatesStatus: 'ready', candidates: [], sessionId: undefined } })
     // The two boundaries get different copy, so a greyed tab names its cause.
     expect(screen.getByRole('status').textContent).toBe(en.agentTeamLlmWorkspaceNoProjectRoot)
     expect(en.agentTeamLlmWorkspaceNoSession).not.toBe(en.agentTeamLlmWorkspaceNoProjectRoot)
@@ -103,7 +103,7 @@ describe('workspace layer notices', () => {
   })
 
   it('disables the workspace tab while the layer cannot be read', () => {
-    renderCard({ workspace: { status: 'unavailable', path: undefined, error: undefined, reason: 'noSession' } })
+    renderCard({ workspace: { status: 'unavailable', path: undefined, error: undefined, reason: 'noSession', candidatesStatus: 'ready', candidates: [], sessionId: undefined } })
 
     const [, workspace] = screen.getAllByRole('tab')
     expect(workspace!).toHaveProperty('disabled', true)

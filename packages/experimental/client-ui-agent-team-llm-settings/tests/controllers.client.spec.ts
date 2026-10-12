@@ -18,6 +18,7 @@ function noTeamDocuments(read: Partial<AgentTeamLlmTeamDocumentRead> = {}): Agen
       ok: true as const, value: { path: '/project/.dsh/team.json', document: { version: 1 as const }, ...read },
     }),
     saveTeamDocument: () => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } }),
+    listWorkspaceCandidates: () => Promise.resolve({ ok: true as const, value: [] }),
   }
 }
 

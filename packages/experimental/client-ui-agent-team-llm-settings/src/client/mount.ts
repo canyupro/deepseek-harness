@@ -44,26 +44,16 @@ function teamDocuments(ctx: Context): AgentTeamLlmTeamDocuments {
 }
 
 /**
- * The Session whose workspace root the Host resolves for the workspace layer.
- *
- * The main view names the session the user is looking at and is the exact answer
- * wherever it is held. Nothing holds main-view retention on the settings page,
- * which would otherwise grey the workspace tab out for a session that does have
- * a project root, so the most recently updated session stands in: every Session
- * resolves a project root or none, and the newest one is the likeliest subject
- * of settings being edited. That fallback is a heuristic — the card shows the
- * resolved document path, so a wrong guess is visible rather than silent.
+ * The Session the operator is looking at, which is what the workspace layer
+ * resolves whenever one is held. Nothing else belongs here: the settings page
+ * holds no main-view retention, and the card falls back to the sessions the Host
+ * offers, which it ranks separately.
  * @param ctx - the browser plugin context carrying the Session catalog.
- * @returns a reader for the Session identity, or undefined while the catalog holds none.
+ * @returns a reader for the Session identity, or undefined while no Session is held.
  */
 function workspaceSession(ctx: Context): () => SessionId | undefined {
-  return () => {
-    const rows = Object.values(ctx.sessions.list.getSnapshot().byId)
-    const mainView = rows.find(row => (row.retainedBy.mainView ?? 0) > 0)
-    if (mainView !== undefined) return mainView.id
-    return rows.reduce<typeof rows[number] | undefined>((newest, row) =>
-      newest === undefined || row.updatedAt > newest.updatedAt ? row : newest, undefined)?.id
-  }
+  return () => Object.values(ctx.sessions.list.getSnapshot().byId)
+    .find(row => (row.retainedBy.mainView ?? 0) > 0)?.id
 }
 
 function registerUi(ctx: Context): void {

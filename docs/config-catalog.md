@@ -873,8 +873,9 @@ export type MemberSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-a
 
 ## `@deepseek-ai/dsh-experimental-agent-team-llm-settings`
 
+- `inject`: `sessionQuery`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/experimental/agent-team-llm-settings/src/index.ts:63`](../packages/experimental/agent-team-llm-settings/src/index.ts)
+- `source`: [`packages/experimental/agent-team-llm-settings/src/index.ts:66`](../packages/experimental/agent-team-llm-settings/src/index.ts)
 
 ```ts config-catalog
 /** Optional deployment base for the Team LLM settings. */

@@ -14,6 +14,17 @@ export type AgentTeamLlmCardProps = PropsRuntime<'plugins.item'>
   & PropsLocale<'settings.agentTeamLlm'> & InjectFace<AgentTeamLlmCardFace>
 
 /**
+ * The last segment of a working directory, for the session picker. The browser
+ * has no `node:path`, so both separators are cut on.
+ * @param cwd - Absolute working directory the Host reported.
+ * @returns Its final path segment, or the whole string when it names none.
+ */
+function workspaceSessionName(cwd: string): string {
+  const segments = cwd.split(/[/\\]+/).filter(segment => segment !== '')
+  return segments[segments.length - 1] ?? cwd
+}
+
+/**
  * Render the scope switch and the routing document of the selected scope.
  * @param props - the view asked for, locale copy, the card snapshot, and its actions.
  * @returns the one-liner, or the card for one of the two layers.
@@ -108,6 +119,33 @@ export function AgentTeamLlmCard(props: AgentTeamLlmCardProps) {
         : (
           <>
             <div className={css.workspace}>
+              {workspace.candidates.length > 0
+                ? (
+                  <label className={css.workspaceField}>
+                    <span className={css.fieldLabel}>{t('agentTeamLlmWorkspaceSession')}</span>
+                    <select
+                      className={css.select}
+                      value={workspace.sessionId ?? ''}
+                      aria-label={t('agentTeamLlmWorkspaceSession')}
+                      disabled={workspace.status === 'loading' || state.saving || !state.writable}
+                      onChange={(event) => {
+                        // Resolve the offered row rather than branding the raw
+                        // string, so the branded identity the Host minted is the
+                        // one the card carries on.
+                        const chosen = workspace.candidates
+                          .find(candidate => candidate.sessionId === event.target.value)
+                        if (chosen !== undefined) props.setWorkspaceSession(chosen.sessionId)
+                      }}
+                    >
+                      {workspace.candidates.map(candidate => (
+                        <option key={candidate.sessionId} value={candidate.sessionId} title={candidate.cwd}>
+                          {workspaceSessionName(candidate.cwd)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )
+                : null}
               {workspace.error !== undefined
                 ? (
                   // A refused read is retried; a refused write is corrected in

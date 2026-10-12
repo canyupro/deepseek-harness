@@ -12,8 +12,11 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { stubConfigForm } from '@deepseek-ai/dsh-client-test-runtime'
 import {
   AgentTeamLlmCardController, type AgentTeamLlmCardState, type AgentTeamLlmSettings,
+  type AgentTeamLlmWorkspaceCandidate,
 } from '../src/client/agent-team-llm-card-controller.ts'
 import type { AgentTeamLlmTeamDocument, AgentTeamLlmTeamDocuments } from '../src/client/team-document.ts'
+
+type WorkspaceSessionCandidate = AgentTeamLlmWorkspaceCandidate
 
 const SESSION = SessionId('session-1')
 const ALPHA = [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast' }, { id: 'deep', name: 'Deep' }] }]
@@ -40,13 +43,22 @@ function acceptWrites<T>(host: ReturnType<typeof stubConfigForm<T>>): void {
 }
 
 /** Workspace documents scripted over one stored document. */
-function documents(document?: AgentTeamLlmTeamDocument) {
+function documents(document?: AgentTeamLlmTeamDocument, candidates: WorkspaceSessionCandidate[] = []) {
   const readTeamDocument = vi.fn(() => Promise.resolve({
     ok: true as const,
     value: { path: '/project/.dsh/team.json', document: document ?? null },
   }))
   const saveTeamDocument = vi.fn(() => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } }))
-  return { slice: { readTeamDocument, saveTeamDocument } satisfies AgentTeamLlmTeamDocuments, readTeamDocument, saveTeamDocument }
+  const listWorkspaceCandidates = vi.fn(() => Promise.resolve({
+    ok: true as const,
+    value: candidates,
+  }))
+  return {
+    slice: { readTeamDocument, saveTeamDocument, listWorkspaceCandidates } satisfies AgentTeamLlmTeamDocuments,
+    readTeamDocument,
+    saveTeamDocument,
+    listWorkspaceCandidates,
+  }
 }
 
 interface Options {
@@ -418,7 +430,11 @@ describe('hand-filled member routes', () => {
     const controller = new AgentTeamLlmCardController(
       host.scope,
       catalog as never,
-      { readTeamDocument: () => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json', document: { version: 1 as const, enabled: false } } }), saveTeamDocument },
+      {
+        readTeamDocument: () => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json', document: { version: 1 as const, enabled: false } } }),
+        saveTeamDocument,
+        listWorkspaceCandidates: () => Promise.resolve({ ok: true as const, value: [] }),
+      },
       () => SESSION,
     )
     const face = controller.inject()

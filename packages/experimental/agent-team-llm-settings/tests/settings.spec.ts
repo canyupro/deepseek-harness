@@ -3,17 +3,31 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import type { WorkspaceFileScope } from '@deepseek-ai/dsh-api-workspace-files'
 import AgentTeamLlmSettings, { teamRouteFor } from '../src/index.ts'
 import type { TeamDocument } from '../src/index.ts'
+import { TestSessionQuery, setSessionRecords, topLevelSession, childSession } from './test-session-query.ts'
 
 const ROUTE = { provider: 'mock', model: 'flash' }
 const OTHER = { provider: 'mock', model: 'strong' }
 
+/**
+ * A Context carrying the `sessionQuery` the settings service injects. The
+ * service reads the corpus only to offer workspace candidates, so an empty
+ * scripted corpus keeps every other case independent of session state.
+ */
+async function testContext(): Promise<Context> {
+  const ctx = new Context()
+  await ctx.plugin(SessionStore)
+  await ctx.plugin(TestSessionQuery)
+  setSessionRecords([])
+  return ctx
+}
+
 describe('agent-team-llm-settings', () => {
   it('is inert while disabled', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, { allowedRoutes: [ROUTE], roleRoutes: [{ ...OTHER, name: 'recon' }] })
     expect(ctx.agentTeamLlm.current().enabled).toBe(false)
     expect(teamRouteFor(ctx.agentTeamLlm.current(), 'recon')).toBeUndefined()
@@ -22,7 +36,7 @@ describe('agent-team-llm-settings', () => {
   })
 
   it('resolves a preset by teammate name, then the default route', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, {
       enabled: true,
       allowedRoutes: [ROUTE, OTHER],
@@ -36,13 +50,13 @@ describe('agent-team-llm-settings', () => {
   })
 
   it('falls back to inheriting the Lead route without a preset or default', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [ROUTE] })
     expect(teamRouteFor(ctx.agentTeamLlm.current(), 'recon')).toBeUndefined()
   })
 
   it('brands a configured reasoning effort', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, {
       enabled: true,
       allowedRoutes: [{ ...ROUTE, reasoningEffort: 'high' }],
@@ -55,19 +69,19 @@ describe('agent-team-llm-settings', () => {
   })
 
   it('rejects a default route that names only one half', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [ROUTE], defaultProvider: ROUTE.provider })
     expect(() => ctx.agentTeamLlm.current()).toThrow(/needs both `defaultProvider` and `defaultModel`/u)
   })
 
   it('rejects an enabled document without an allowed route', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, { enabled: true })
     expect(() => ctx.agentTeamLlm.current()).toThrow(/at least one allowed route/u)
   })
 
   it('rejects a preset route outside the allowed list', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, {
       enabled: true,
       allowedRoutes: [ROUTE],
@@ -77,7 +91,7 @@ describe('agent-team-llm-settings', () => {
   })
 
   it('rejects a default route outside the allowed list', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, {
       enabled: true,
       allowedRoutes: [ROUTE],
@@ -88,7 +102,7 @@ describe('agent-team-llm-settings', () => {
   })
 
   it('rejects a repeated teammate preset name', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, {
       enabled: true,
       allowedRoutes: [ROUTE],
@@ -98,7 +112,7 @@ describe('agent-team-llm-settings', () => {
   })
 
   it('ignores an allow-list violation while the document is disabled', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, {
       allowedRoutes: [ROUTE],
       defaultProvider: OTHER.provider,
@@ -108,13 +122,13 @@ describe('agent-team-llm-settings', () => {
   })
 
   it('reports no fixed roster while only the global layer is read', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [ROUTE] })
     expect(ctx.agentTeamLlm.current().members).toEqual([])
   })
 
   it('resolves a fixed roster from the global layer', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, {
       enabled: true,
       allowedRoutes: [ROUTE, OTHER],
@@ -141,7 +155,7 @@ describe('agent-team-llm-settings', () => {
   })
 
   it('defaults a global member to a fresh context without a route', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, { members: [{ name: 'recon', description: 'Maps the tree.' }] })
 
     expect(ctx.agentTeamLlm.current().members).toEqual([
@@ -150,21 +164,21 @@ describe('agent-team-llm-settings', () => {
   })
 
   it('rejects a global member name that is not lowercase kebab-case', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, { members: [{ name: 'Recon Bot', description: 'Reads.' }] })
 
     expect(() => ctx.agentTeamLlm.current()).toThrow(/member "Recon Bot" must match/u)
   })
 
   it('rejects a global member name reserved for the Lead', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, { members: [{ name: 'lead', description: 'Reads.' }] })
 
     expect(() => ctx.agentTeamLlm.current()).toThrow(/member "lead" is reserved for the Team Lead/u)
   })
 
   it('rejects a repeated global member name', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, {
       members: [{ name: 'recon', description: 'Reads.' }, { name: 'recon', description: 'Reads twice.' }],
     })
@@ -173,7 +187,7 @@ describe('agent-team-llm-settings', () => {
   })
 
   it('rejects a global roster above the deployment cap', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     await ctx.plugin(AgentTeamLlmSettings, {
       maxMembers: 1,
       members: [{ name: 'recon', description: 'Reads.' }, { name: 'reviewer', description: 'Reviews.' }],
@@ -184,14 +198,14 @@ describe('agent-team-llm-settings', () => {
   })
 
   it('rejects a global member route that names only one half', async () => {
-    const providerOnly = new Context()
+    const providerOnly = await testContext()
     await providerOnly.plugin(AgentTeamLlmSettings, {
       members: [{ name: 'recon', description: 'Reads.', provider: ROUTE.provider }],
     })
     expect(() => providerOnly.agentTeamLlm.current())
       .toThrow(/member "recon" route needs both `provider` and `model`/u)
 
-    const modelOnly = new Context()
+    const modelOnly = await testContext()
     await modelOnly.plugin(AgentTeamLlmSettings, {
       members: [{ name: 'reviewer', description: 'Reviews.', model: ROUTE.model }],
     })
@@ -211,7 +225,7 @@ describe('agent-team-llm-settings workspace document', () => {
     repo = join(root, 'repo')
     await mkdir(join(repo, '.git'), { recursive: true })
     await mkdir(join(repo, 'packages', 'app'), { recursive: true })
-    ctx = new Context()
+    ctx = await testContext()
   })
 
   afterEach(async () => {
@@ -640,7 +654,7 @@ describe('agent-team-llm-settings member sandbox scope', () => {
     root = await mkdtemp(join(tmpdir(), 'dsh-team-sandbox-'))
     repo = join(root, 'repo')
     await mkdir(join(repo, '.git'), { recursive: true })
-    ctx = new Context()
+    ctx = await testContext()
   })
 
   afterEach(async () => {
@@ -655,7 +669,7 @@ describe('agent-team-llm-settings member sandbox scope', () => {
   }
 
   it('resolves a global member sandbox scope, and omits it when none is declared', async () => {
-    const withMode = new Context()
+    const withMode = await testContext()
     await withMode.plugin(AgentTeamLlmSettings, {
       members: [
         { name: 'recon', description: 'Reads.', sandboxMode: 'read-only' },
@@ -678,7 +692,7 @@ describe('agent-team-llm-settings member sandbox scope', () => {
   })
 
   it('refuses a global member sandbox scope outside the three modes at the Config layer', async () => {
-    const ctx = new Context()
+    const ctx = await testContext()
     // The reachable contract: `memberSchema` is a three-value union, so an
     // unknown scope never reaches `resolveMembers`; the mount itself is refused
     // and the message names the offending field.
@@ -771,5 +785,98 @@ describe('agent-team-llm-settings member sandbox scope', () => {
     expect(members.map(member => member.name)).toEqual(['recon', 'builder'])
     expect(members[1]).toMatchObject({ name: 'builder', sandboxMode: 'danger-full-access' })
     expect(members[0]).toMatchObject({ name: 'recon', sandboxMode: 'read-only' })
+  })
+})
+
+describe('agent-team-llm-settings workspace candidates', () => {
+  let ctx: Context
+
+  beforeEach(async () => {
+    ctx = await testContext()
+  })
+
+  afterEach(async () => {
+    await ctx.fiber.dispose()
+  })
+
+  /** Mount the service so the Remote the card calls answers candidates. */
+  async function mount(): Promise<void> {
+    await ctx.plugin(AgentTeamLlmSettings, { allowedRoutes: [ROUTE] })
+  }
+
+  const signal = new AbortController().signal
+
+  it('offers a top-level Session with a working directory as a candidate', async () => {
+    setSessionRecords([topLevelSession('s1', { cwd: '/projects/alpha', createdAt: 1_700_000_000_000 })])
+    await mount()
+
+    expect(await ctx.agentTeamLlm.listWorkspaceCandidates(signal)).toEqual([
+      { sessionId: 's1', cwd: '/projects/alpha', createdAt: 1_700_000_000_000 },
+    ])
+  })
+
+  it('never offers a teammate child Session', async () => {
+    // A child Session resolves its own workspace root, so listing it would fill
+    // the picker with the very subagents the team just spawned.
+    setSessionRecords([
+      topLevelSession('lead', { cwd: '/projects/alpha', createdAt: 2 }),
+      childSession('child', 'lead', { cwd: '/projects/alpha/packages/app', createdAt: 3 }),
+    ])
+    await mount()
+
+    const candidates = await ctx.agentTeamLlm.listWorkspaceCandidates(signal)
+
+    expect(candidates.map(candidate => candidate.sessionId)).toEqual(['lead'])
+  })
+
+  it('never offers a Session whose header omits or empties its working directory', async () => {
+    setSessionRecords([
+      topLevelSession('absent', { createdAt: 1 }),
+      topLevelSession('empty', { cwd: '', createdAt: 2 }),
+      topLevelSession('real', { cwd: '/projects/alpha', createdAt: 3 }),
+    ])
+    await mount()
+
+    expect((await ctx.agentTeamLlm.listWorkspaceCandidates(signal)).map(candidate => candidate.sessionId))
+      .toEqual(['real'])
+  })
+
+  it('ranks candidates newest-created first', async () => {
+    setSessionRecords([
+      topLevelSession('oldest', { cwd: '/a', createdAt: 1 }),
+      topLevelSession('newest', { cwd: '/b', createdAt: 3 }),
+      topLevelSession('middle', { cwd: '/c', createdAt: 2 }),
+    ])
+    await mount()
+
+    expect((await ctx.agentTeamLlm.listWorkspaceCandidates(signal)).map(candidate => candidate.sessionId))
+      .toEqual(['newest', 'middle', 'oldest'])
+  })
+
+  it('offers at most twenty candidates, keeping the twenty newest-created', async () => {
+    setSessionRecords(Array.from({ length: 25 }, (_unused, index) =>
+      topLevelSession(`s${index}`, { cwd: `/projects/p${index}`, createdAt: index })))
+    await mount()
+
+    const candidates = await ctx.agentTeamLlm.listWorkspaceCandidates(signal)
+
+    expect(candidates).toHaveLength(20)
+    expect(candidates[0]?.sessionId).toBe('s24')
+    expect(candidates.at(-1)?.sessionId).toBe('s5')
+  })
+
+  it('offers nothing when the corpus holds no usable Session', async () => {
+    setSessionRecords([])
+    await mount()
+
+    expect(await ctx.agentTeamLlm.listWorkspaceCandidates(signal)).toEqual([])
+  })
+
+  it('honors a canceled candidate listing', async () => {
+    setSessionRecords([topLevelSession('s1', { cwd: '/projects/alpha', createdAt: 1 })])
+    await mount()
+
+    await expect(ctx.agentTeamLlm.listWorkspaceCandidates(AbortSignal.abort()))
+      .rejects.toThrow()
   })
 })

@@ -117,6 +117,7 @@ describe('member sandbox controller staging', () => {
     const documents = {
       readTeamDocument: () => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json', document: null } }),
       saveTeamDocument: vi.fn(() => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } })),
+      listWorkspaceCandidates: () => Promise.resolve({ ok: true as const, value: [] }),
     }
     const controller = new AgentTeamLlmCardController(host.scope, catalog as never, documents, () => SESSION)
     const face = controller.inject()
@@ -171,6 +172,7 @@ describe('member sandbox controller staging', () => {
         value: { path: '/project/.dsh/team.json', document: { version: 1 as const, members: [{ name: 'recon', description: 'Reads the tree.' }] } },
       }),
       saveTeamDocument: vi.fn(() => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } })),
+      listWorkspaceCandidates: () => Promise.resolve({ ok: true as const, value: [] }),
     }
     const catalog = {
       remote: { session: { modelCatalog: () => Promise.resolve({ ok: true as const, value: { groups: [], failures: [] } }) } },
@@ -203,7 +205,7 @@ describe('member sandbox row control', () => {
     const store = createSnapshotStore<AgentTeamLlmCardState>({
       ...shell,
       scope: 'global',
-      workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined, reason: undefined },
+      workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined, reason: undefined, candidatesStatus: 'ready', candidates: [], sessionId: undefined },
       enabled: true,
       candidates: [],
       allowed: [],

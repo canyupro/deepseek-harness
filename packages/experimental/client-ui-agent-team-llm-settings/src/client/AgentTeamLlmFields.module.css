@@ -246,6 +246,12 @@
   padding-top: 12px;
 }
 
+.workspaceField {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .workspacePath {
   margin: 0;
   overflow: hidden;

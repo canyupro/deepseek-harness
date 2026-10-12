@@ -46,6 +46,7 @@ export type AgentTeamLlmSettingsLocaleKey =
   | 'agentTeamLlmWorkspaceNoSession' | 'agentTeamLlmWorkspaceNoProjectRoot'
   | 'agentTeamLlmWorkspaceLoadFailed' | 'agentTeamLlmWorkspaceSaveFailed'
   | 'agentTeamLlmWorkspaceRetry' | 'agentTeamLlmWorkspacePath'
+  | 'agentTeamLlmWorkspaceSession'
   | 'agentTeamLlmMembers' | 'agentTeamLlmMembersEmpty'
   | 'agentTeamLlmMemberName' | 'agentTeamLlmMemberNamePlaceholder'
   | 'agentTeamLlmMemberDescription' | 'agentTeamLlmMemberDescriptionPlaceholder'
@@ -114,6 +115,7 @@ export const en: Record<AgentTeamLlmSettingsLocaleKey, string> = {
   agentTeamLlmWorkspaceSaveFailed: 'The team document was not saved.',
   agentTeamLlmWorkspaceRetry: 'Retry',
   agentTeamLlmWorkspacePath: 'Team document',
+  agentTeamLlmWorkspaceSession: 'Project',
   agentTeamLlmMembers: 'Team members',
   agentTeamLlmMembersEmpty: 'No members. Teammates use the routes above.',
   agentTeamLlmMemberName: 'Member name',
@@ -204,6 +206,7 @@ export const zh: Record<AgentTeamLlmSettingsLocaleKey, string> = {
   agentTeamLlmWorkspaceSaveFailed: '团队文档没有被保存。',
   agentTeamLlmWorkspaceRetry: '重试',
   agentTeamLlmWorkspacePath: '团队文档',
+  agentTeamLlmWorkspaceSession: '项目',
   agentTeamLlmMembers: '团队成员',
   agentTeamLlmMembersEmpty: '没有成员。队友使用上方的路由。',
   agentTeamLlmMemberName: '成员名称',

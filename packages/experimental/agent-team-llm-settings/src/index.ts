@@ -4,6 +4,8 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Volatile } from '@deepseek-ai/cordis'
 import type { WorkspaceFileScope } from '@deepseek-ai/dsh-api-workspace-files'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+// Type-only: pulls the SessionQuery service merge (ctx.sessionQuery).
+import type {} from '@deepseek-ai/dsh-session-query'
 import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { FRESH_MEMBER_CONTEXT, LEAD_TEAM_NAME, TEAM_MEMBER_NAME, TeamDocumentError, parseTeamDocument } from './document.ts'
@@ -15,6 +17,7 @@ import type {
   TeamMemberConfig,
   TeamMemberContext,
   TeamMemberDocument,
+  WorkspaceSessionCandidate,
 } from './types.ts'
 import { findProjectRoot, readDocumentFile, teamDocumentPath, writeDocumentFile } from './workspace-document.ts'
 
@@ -112,6 +115,13 @@ export interface TeamMemberInput {
   /** Adapter-owned reasoning effort; omission uses the model default. */
   readonly reasoningEffort?: string
 }
+
+/**
+ * Most workspace candidates one picker call returns. The picker chooses among
+ * recent workspaces, so a longer corpus is truncated rather than paged: an
+ * unbounded list would grow with every Session the host has ever kept.
+ */
+const WORKSPACE_CANDIDATE_LIMIT = 20
 
 const routeSchema = z.object({
   provider: z.string().min(1).required(),
@@ -309,6 +319,8 @@ function overlayDocument(global: AgentTeamLlmSettingsValue, document: TeamDocume
  * workspace layer and the global value stands.
  */
 export class AgentTeamLlmSettings extends TypertRemoteService {
+  static inject = ['sessionQuery']
+
   static Config = z.object({
     enabled: z.boolean().default(false).volatile(),
     allowedRoutes: z.array(routeSchema).default([]).volatile(),
@@ -412,6 +424,40 @@ export class AgentTeamLlmSettings extends TypertRemoteService {
     if (projectRoot === undefined) return { path: null, document: null }
     const path = teamDocumentPath(projectRoot)
     return { path, document: this.readDocumentAt(path) ?? null }
+  }
+
+  /**
+   * List the Sessions a workspace team document can be edited for.
+   *
+   * A caller with no Session of its own — the plugin settings page, where no
+   * Session is live — still needs one identity to resolve a project root from.
+   * Only top-level Sessions qualify: a subagent child runs inside its parent's
+   * workspace, and listing one as a separate choice would offer the picker the
+   * same directory twice. A Session whose header carries no working directory
+   * is skipped, because the document Remote resolves a project root by walking
+   * up from that directory.
+   *
+   * The order key is the header's creation time. A durable Session's
+   * last-prompt time belongs to the GUI API session-list projection, which the
+   * headless composition does not mount, so it takes no part in this order and
+   * a candidate created earlier but used later ranks below this one.
+   * @param signal - caller cancellation.
+   * @returns at most {@link WORKSPACE_CANDIDATE_LIMIT} candidates, newest-created first.
+   * @throws Error when the caller aborted.
+   */
+  @Remote
+  async listWorkspaceCandidates(signal: AbortSignal): Promise<readonly WorkspaceSessionCandidate[]> {
+    signal.throwIfAborted()
+    const records = await this.ctx.sessionQuery.listSessions(signal)
+    signal.throwIfAborted()
+    return records
+      .flatMap((record) => {
+        const { cwd, parentSession } = record.header
+        if (parentSession !== undefined || cwd === undefined || cwd === '') return []
+        return [{ sessionId: record.header.id, cwd, createdAt: record.header.createdAt }]
+      })
+      .sort((left, right) => right.createdAt - left.createdAt)
+      .slice(0, WORKSPACE_CANDIDATE_LIMIT)
   }
 
   /**

@@ -71,6 +71,7 @@ async function bench(served?: string[]) {
     saveTeamDocument: vi.fn(() => Promise.resolve({
       ok: true as const, value: { path: '/project/.dsh/team.json' },
     })),
+    listWorkspaceCandidates: vi.fn(() => Promise.resolve({ ok: true as const, value: [] })),
   })
   ctx.provide('sessions', {
     list: {
