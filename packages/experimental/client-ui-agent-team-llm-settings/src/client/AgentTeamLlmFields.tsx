@@ -9,6 +9,7 @@ import {
   type AgentTeamLlmCardFace,
   type AgentTeamLlmCardState,
 } from './agent-team-llm-card-controller.ts'
+import { classNameOf } from './class-name.ts'
 import css from './AgentTeamLlmFields.module.css'
 
 /** Plain routing state and callbacks supplied by the owning card. */
@@ -55,7 +56,7 @@ function AuthorizedRoutes(props: {
           <div key={route.key} className={css.routeRow}>
             <span className={css.routeIdentity}>{`${route.provider}/${route.model}`}</span>
             <Input
-              className={css.routeEffort ?? ''}
+              className={classNameOf(css.routeEffort)}
               value={route.reasoningEffort ?? ''}
               aria-label={t('agentTeamLlmRouteEffort')}
               placeholder={t('agentTeamLlmRouteEffortPlaceholder')}
@@ -75,7 +76,7 @@ function AuthorizedRoutes(props: {
       </div>
       <div className={css.routeAdd}>
         <Input
-          className={css.routeProvider ?? ''}
+          className={classNameOf(css.routeProvider)}
           value={provider}
           aria-label={t('agentTeamLlmRouteProvider')}
           placeholder={t('agentTeamLlmRouteProviderPlaceholder')}
@@ -83,7 +84,7 @@ function AuthorizedRoutes(props: {
           onChange={(event) => { setProvider(event.target.value) }}
         />
         <Input
-          className={css.routeModel ?? ''}
+          className={classNameOf(css.routeModel)}
           value={model}
           aria-label={t('agentTeamLlmRouteModel')}
           placeholder={t('agentTeamLlmRouteModelPlaceholder')}
@@ -240,7 +241,7 @@ export function AgentTeamLlmFields(props: AgentTeamLlmFieldsProps) {
             {state.roles.map((role, index) => (
               <div key={index} className={css.roleRow}>
                 <Input
-                  className={css.roleName ?? ''}
+                  className={classNameOf(css.roleName)}
                   value={role.name}
                   aria-label={t('agentTeamLlmRoleName')}
                   placeholder={t('agentTeamLlmRoleNamePlaceholder')}
@@ -261,7 +262,7 @@ export function AgentTeamLlmFields(props: AgentTeamLlmFieldsProps) {
                     : null}
                 </select>
                 <Input
-                  className={css.routeEffort ?? ''}
+                  className={classNameOf(css.routeEffort)}
                   value={role.route.reasoningEffort ?? ''}
                   aria-label={t('agentTeamLlmRoleEffort')}
                   placeholder={t('agentTeamLlmRouteEffortPlaceholder')}

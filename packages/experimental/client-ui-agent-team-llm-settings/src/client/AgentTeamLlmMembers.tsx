@@ -8,6 +8,7 @@ import {
   type AgentTeamLlmCardFace,
 } from './agent-team-llm-card-controller.ts'
 import type { AgentTeamLlmMemberState } from './team-document.ts'
+import { classNameOf } from './class-name.ts'
 import css from './AgentTeamLlmFields.module.css'
 
 /** Member editing actions supplied by the owning card. */
@@ -44,7 +45,7 @@ export function AgentTeamLlmMembers(props: AgentTeamLlmMembersProps) {
             <div key={index} className={invalid ? `${row} ${css.memberInvalid}` : row}>
               <div className={css.memberFields}>
                 <Input
-                  className={css.memberName ?? ''}
+                  className={classNameOf(css.memberName)}
                   value={member.name}
                   aria-label={t('agentTeamLlmMemberName')}
                   placeholder={t('agentTeamLlmMemberNamePlaceholder')}
@@ -53,7 +54,7 @@ export function AgentTeamLlmMembers(props: AgentTeamLlmMembersProps) {
                   onChange={(event) => { props.setMemberName(index, event.target.value) }}
                 />
                 <Input
-                  className={css.memberDescription ?? ''}
+                  className={classNameOf(css.memberDescription)}
                   value={member.description}
                   aria-label={t('agentTeamLlmMemberDescription')}
                   placeholder={t('agentTeamLlmMemberDescriptionPlaceholder')}
@@ -136,7 +137,7 @@ export function AgentTeamLlmMembers(props: AgentTeamLlmMembersProps) {
               />
               <div className={css.memberRouteFields}>
                 <Input
-                  className={css.routeProvider ?? ''}
+                  className={classNameOf(css.routeProvider)}
                   value={member.route.provider}
                   aria-label={t('agentTeamLlmRouteProvider')}
                   placeholder={t('agentTeamLlmRouteProviderPlaceholder')}
@@ -146,7 +147,7 @@ export function AgentTeamLlmMembers(props: AgentTeamLlmMembersProps) {
                   }}
                 />
                 <Input
-                  className={css.routeModel ?? ''}
+                  className={classNameOf(css.routeModel)}
                   value={member.route.model}
                   aria-label={t('agentTeamLlmRouteModel')}
                   placeholder={t('agentTeamLlmRouteModelPlaceholder')}
@@ -156,7 +157,7 @@ export function AgentTeamLlmMembers(props: AgentTeamLlmMembersProps) {
                   }}
                 />
                 <Input
-                  className={css.routeEffort ?? ''}
+                  className={classNameOf(css.routeEffort)}
                   value={member.route.reasoningEffort ?? ''}
                   aria-label={t('agentTeamLlmRouteEffort')}
                   placeholder={t('agentTeamLlmRouteEffortPlaceholder')}

@@ -111,7 +111,10 @@ export interface AgentTeamLlmMemberState extends AgentTeamLlmMemberDraft {
   problems: readonly AgentTeamLlmMemberProblemKey[]
 }
 
-/** An empty member row the editor appends. */
+/**
+ * An empty member row the editor appends.
+ * @returns the draft row with every field at its inherit-or-empty default.
+ */
 export function emptyAgentTeamLlmMember(): AgentTeamLlmMemberDraft {
   return { name: '', description: '', prompt: '', context: 'fresh', sandboxMode: '', route: { provider: '', model: '' } }
 }
@@ -172,25 +175,39 @@ export function agentTeamLlmTeamMemberOf(draft: AgentTeamLlmMemberDraft): AgentT
 export function agentTeamLlmMemberProblems(
   members: readonly AgentTeamLlmMemberDraft[],
 ): AgentTeamLlmMemberProblemKey[][] {
-  const occurrences = new Map<string, number>()
-  for (const member of members) {
-    if (member.name !== '') occurrences.set(member.name, (occurrences.get(member.name) ?? 0) + 1)
-  }
-  return members.map((member) => {
-    const problems = new Set<AgentTeamLlmMemberProblemKey>()
-    if (member.name === '') problems.add('agentTeamLlmMemberNameRequired')
-    else if (!MEMBER_NAME.test(member.name)) problems.add('agentTeamLlmMemberNameFormat')
-    if (member.name === RESERVED_NAME) problems.add('agentTeamLlmMemberNameReserved')
-    if (member.description === '') problems.add('agentTeamLlmMemberDescriptionRequired')
-    if ((occurrences.get(member.name) ?? 0) > 1) problems.add('agentTeamLlmMemberNameDuplicate')
-    if ((member.route.provider === '') !== (member.route.model === '')) {
-      problems.add('agentTeamLlmMemberRouteIncomplete')
-    }
-    return [...problems]
-  })
+  return members.map(member => agentTeamLlmMemberProblem(member, members))
 }
 
-/** Whether two member rows would store the same member. */
+/**
+ * The rules one staged member row breaks, read against its siblings.
+ * @param member - the staged member row to check.
+ * @param members - every staged row, which duplicate-name detection needs.
+ * @returns the violated rules for `member`, empty when the Host would accept it.
+ */
+export function agentTeamLlmMemberProblem(
+  member: AgentTeamLlmMemberDraft,
+  members: readonly AgentTeamLlmMemberDraft[],
+): AgentTeamLlmMemberProblemKey[] {
+  const problems = new Set<AgentTeamLlmMemberProblemKey>()
+  if (member.name === '') problems.add('agentTeamLlmMemberNameRequired')
+  else if (!MEMBER_NAME.test(member.name)) problems.add('agentTeamLlmMemberNameFormat')
+  if (member.name === RESERVED_NAME) problems.add('agentTeamLlmMemberNameReserved')
+  if (member.description === '') problems.add('agentTeamLlmMemberDescriptionRequired')
+  if (members.filter(sibling => sibling.name === member.name && member.name !== '').length > 1) {
+    problems.add('agentTeamLlmMemberNameDuplicate')
+  }
+  if ((member.route.provider === '') !== (member.route.model === '')) {
+    problems.add('agentTeamLlmMemberRouteIncomplete')
+  }
+  return [...problems]
+}
+
+/**
+ * Whether two member rows would store the same member.
+ * @param left - one staged member row.
+ * @param right - the member row to compare against it.
+ * @returns whether both rows would store identical member fields.
+ */
 export function sameAgentTeamLlmMember(
   left: AgentTeamLlmMemberDraft,
   right: AgentTeamLlmMemberDraft,
@@ -205,7 +222,12 @@ export function sameAgentTeamLlmMember(
     && left.route.reasoningEffort === right.route.reasoningEffort
 }
 
-/** Whether two member lists would store the same composition. */
+/**
+ * Whether two member lists would store the same composition.
+ * @param left - one staged member list.
+ * @param right - the member list to compare against it.
+ * @returns whether both lists hold the same rows in the same order.
+ */
 export function sameAgentTeamLlmMembers(
   left: readonly AgentTeamLlmMemberDraft[],
   right: readonly AgentTeamLlmMemberDraft[],

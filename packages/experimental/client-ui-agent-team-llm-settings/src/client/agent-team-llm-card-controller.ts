@@ -9,7 +9,8 @@ import type {
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { AgentTeamLlmProblemKey } from './locales.ts'
 import {
-  agentTeamLlmMemberDrafts, agentTeamLlmMemberProblems, agentTeamLlmTeamDocumentOf, agentTeamLlmTeamMemberOf,
+  agentTeamLlmMemberDrafts, agentTeamLlmMemberProblem, agentTeamLlmMemberProblems,
+  agentTeamLlmTeamDocumentOf, agentTeamLlmTeamMemberOf,
   emptyAgentTeamLlmMember, sameAgentTeamLlmMembers,
   type AgentTeamLlmDocumentScope, type AgentTeamLlmMemberDraft, type AgentTeamLlmMemberProblemKey,
   type AgentTeamLlmMemberState, type AgentTeamLlmTeamDocument, type AgentTeamLlmTeamDocuments,
@@ -259,9 +260,11 @@ export function agentTeamLlmCandidates(
   const candidates = groups.flatMap(group => group.models.map((model): AgentTeamLlmCandidate => {
     const route = { provider: group.id, model: model.id }
     const key = agentTeamLlmRouteKey(route)
+    // A stored route keeps its effort visible while the catalog still advertises it.
+    const stored = storedByKey.get(key)
     storedByKey.delete(key)
     return {
-      ...route,
+      ...copyRoute(stored ?? route),
       key,
       providerName: group.name,
       modelName: model.name,
@@ -1012,15 +1015,15 @@ export class AgentTeamLlmCardController {
 
   private members(): AgentTeamLlmMemberState[] {
     const routing = this.desiredRouting(this.activeScope)
-    const problems = this.memberProblems()
-    return routing.members.map((member, index) => ({
+    const members = routing.members
+    return members.map(member => ({
       ...member,
       route: copyRoute(member.route),
       // A member without a route selects the inherit option, so its key stays the empty string.
       key: member.route.provider === '' && member.route.model === ''
         ? ''
         : agentTeamLlmRouteKey(member.route),
-      problems: problems[index] ?? [],
+      problems: agentTeamLlmMemberProblem(member, members),
     }))
   }
 
