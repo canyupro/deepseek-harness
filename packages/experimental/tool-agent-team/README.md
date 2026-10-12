@@ -25,7 +25,7 @@ This package lets the model create the configured team in one call or one teamma
 <a id="use-this-package"></a>
 ## Use this package
 
-Add this package on top of `@deepseek-ai/dsh-experimental-agent-team` when the model should run a team through tools. Once mounted, every team member — the Lead and each teammate — gets the same ten tools plus the same coordination policy. `spawn_team` creates the configured roster and `spawn_teammate` creates one member; both prefix the initial task with the member’s role and name.
+Add this package on top of `@deepseek-ai/dsh-experimental-agent-team` when the model should run a team through tools. Once mounted, every team member — the Lead and each teammate — gets the same ten tools plus the same coordination policy. `spawn_team` creates the configured roster and `spawn_teammate` creates one member; both prefix the initial task with the member’s role and name. The plugin requires the `llm` service, so a composition that mounts it without an LLM provider leaves it inactive instead of failing when a teammate is created.
 
 ### When to choose it
 

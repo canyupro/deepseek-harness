@@ -318,6 +318,53 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'agentTeamLlm',
+    summary: 'Singleton Team LLM settings owner read when a teammate is composed.',
+    description: 'Singleton Team LLM settings owner read when a teammate is composed.\n\nSettings arrive from two layers. The global layer is the user settings document over the deployment base; the workspace layer is `<projectRoot>/.dsh/team.json`. Each field the workspace document declares replaces the global field, except `members`, which merges by name, and the merged value is validated as one document. Without a project root there is no workspace layer and the global value stands.',
+    methods: [
+      {
+        signature: 'current(): AgentTeamLlmSettingsValue',
+        description: 'Read the global layer alone, for a caller that has no workspace root.',
+        parameters: [],
+        returns: 'the enabled state, allowed routes, configured preset routes, and fixed roster.',
+      },
+      {
+        signature: 'resolveFor(workspaceRoot: string | undefined): AgentTeamLlmSettingsValue',
+        description: 'Read the value both layers contribute to, for one workspace root.\n\nAn absent project root or absent document leaves the global value in place; a document overrides only the fields it declares, and merges `members` by name.',
+        parameters: [{ name: 'workspaceRoot', description: 'directory the project-root walk starts from; undefined reads the global layer alone.' }],
+        returns: 'the merged, validated settings including the fixed roster.',
+        throws: ['TeamDocumentError when the document is malformed or over the roster cap.'],
+      },
+      {
+        signature: 'readWorkspaceDocument(root: string): TeamDocument | undefined',
+        description: 'Read and validate the workspace document above one directory.',
+        parameters: [{ name: 'root', description: 'directory the project-root walk starts from.' }],
+        returns: 'the validated document, or undefined when there is no project root or no document.',
+        throws: ['TeamDocumentError when the document is malformed or over the roster cap.'],
+      },
+      {
+        signature: 'async saveWorkspaceDocument(root: string, document: TeamDocument): Promise<string>',
+        description: 'Validate and atomically replace the workspace document above one directory.',
+        parameters: [{ name: 'root', description: 'directory the project-root walk starts from.' }, { name: 'document', description: 'document to validate and write.' }],
+        returns: 'the absolute path the document was written to.',
+        throws: ['TeamDocumentError when the document is malformed or over the roster cap.', 'Error when no ancestor of `root` is a project root.'],
+      },
+      {
+        signature: '@Remote readTeamDocument(workspaceFileScope: WorkspaceFileScope, signal: AbortSignal): TeamDocumentRead',
+        description: 'Read the workspace document for one Session\'s workspace.',
+        parameters: [{ name: 'workspaceFileScope', description: 'header-derived workspace root for the Session identity on the wire.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the document path and its contents; both are null without a project root or a document.',
+      },
+      {
+        signature: '@Remote async saveTeamDocument( workspaceFileScope: WorkspaceFileScope, document: TeamDocument, signal: AbortSignal, ): Promise<TeamDocumentPath>',
+        description: 'Validate and atomically write the workspace document for one Session\'s workspace.\n\nThe path is derived from the Session\'s workspace root, never from the wire.',
+        parameters: [{ name: 'workspaceFileScope', description: 'header-derived workspace root for the Session identity on the wire.' }, { name: 'document', description: 'document to validate and write.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the absolute path the document was written to.',
+        throws: ['RemoteError when the workspace root has no project root.'],
+      },
+    ],
+  },
+  {
     key: 'agentTeams',
     summary: 'Agent Teams service backed by the exact live Lead Session log.',
     description: 'Agent Teams service backed by the exact live Lead Session log.',
@@ -3250,6 +3297,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'tokenUsageController',
+    summary: 'Host service backing the generated `ctx.remote.tokenUsage` namespace.',
+    description: 'Host service backing the generated `ctx.remote.tokenUsage` namespace. Without `sessionQuery` the fiber stays pending, so a mounted controller always has a corpus to read and never answers "unavailable".',
+    methods: [
+      {
+        signature: '@Remote(\'query\') async query(request: TokenUsageQuery): Promise<TokenUsageResponse>',
+        description: 'Read the whole-corpus usage dashboard, from cache unless forced.',
+        parameters: [{ name: 'request', description: 'whether to bypass the per-process cache.' }],
+        returns: 'the figures plus when they were computed and whether they were cached.',
+      },
+    ],
+  },
+  {
     key: 'toolResultPruner',
     summary: 'Deterministic head/middle/tail pruning for current tool-result surface nodes.',
     description: 'Deterministic head/middle/tail pruning for current tool-result surface nodes.',
@@ -4539,6 +4599,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AgentStatus',
     declaration: 'export type AgentStatus = \'idle\' | \'running\';',
+  },
+  {
+    name: 'AgentTeamLlmSettingsValue',
+    declaration: 'export interface AgentTeamLlmSettingsValue {\n    readonly enabled: boolean;\n    readonly allowedRoutes: readonly TeamLlmRoute[];\n    readonly defaultRoute?: TeamLlmRoute;\n    readonly roleRoutes: readonly TeamLlmRoleRoute[];\n    readonly members: readonly TeamMemberConfig[];\n}',
   },
   {
     name: 'AnyHook',
@@ -6033,6 +6097,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PlatformSession {\n    readonly origin: string;\n    readonly token: string;\n    readonly userId: AccountUserId | null;\n    readonly embeddedPageDist?: string;\n    readonly requestHeaders?: Readonly<Record<string, string>>;\n}',
   },
   {
+    name: 'PluginCategory',
+    declaration: 'export type PluginCategory = \'core\' | \'extension\' | \'ui\' | \'other\';',
+  },
+  {
     name: 'PluginChange',
     declaration: 'export interface PluginChange {\n    readonly reason: \'plugin\' | \'bundle\' | \'install\' | \'remove\';\n}',
   },
@@ -6074,7 +6142,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'PluginInventoryEntry',
-    declaration: 'export interface PluginInventoryEntry {\n    readonly entryId: PluginEntryId;\n    readonly moduleName: string;\n    readonly meta?: PluginLocalizedMeta;\n    readonly enabled: boolean;\n    readonly fiberPhase: PluginFiberPhase;\n}',
+    declaration: 'export interface PluginInventoryEntry {\n    readonly entryId: PluginEntryId;\n    readonly moduleName: string;\n    readonly meta?: PluginLocalizedMeta;\n    readonly enabled: boolean;\n    readonly fiberPhase: PluginFiberPhase;\n    readonly category?: PluginCategory;\n}',
   },
   {
     name: 'PluginLocalizedMeta',
@@ -7270,7 +7338,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SpawnTeammateRequest',
-    declaration: 'export interface SpawnTeammateRequest {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt: ContentBlock[];\n    readonly context: \'fresh\' | \'fork\';\n    readonly provider: string;\n    readonly signal: AbortSignal;\n}',
+    declaration: 'export interface SpawnTeammateRequest {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt: ContentBlock[];\n    readonly context: \'fresh\' | \'fork\';\n    readonly provider: string;\n    readonly sandboxMode?: MemberSandboxMode;\n    readonly agentOptions?: TeammateAgentOptions;\n    readonly signal: AbortSignal;\n}',
   },
   {
     name: 'SpawnTeammateResult',
@@ -7466,7 +7534,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SubagentStartRequest',
-    declaration: 'export interface SubagentStartRequest {\n    readonly label?: string;\n    readonly prompt: ContentBlock[];\n    readonly parent: Agent;\n    readonly signal: AbortSignal;\n    readonly agentOptions?: AgentOptions;\n    readonly outputSchema?: ObjectJsonSchema;\n    readonly maxDepth?: number;\n    readonly toolFilter?: ToolRestriction;\n    readonly persona?: string;\n}',
+    declaration: 'export interface SubagentStartRequest {\n    readonly label?: string;\n    readonly prompt: ContentBlock[];\n    readonly parent: Agent;\n    readonly signal: AbortSignal;\n    readonly agentOptions?: AgentOptions;\n    readonly outputSchema?: ObjectJsonSchema;\n    readonly maxDepth?: number;\n    readonly toolFilter?: ToolRestriction;\n    readonly sandboxMode?: SandboxMode;\n    readonly persona?: string;\n}',
   },
   {
     name: 'SubagentStopReason',
@@ -7585,8 +7653,44 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
   },
   {
+    name: 'TeamDocument',
+    declaration: 'export interface TeamDocument {\n    readonly version: 1;\n    readonly enabled?: boolean;\n    readonly allowedRoutes?: readonly TeamRouteDocument[];\n    readonly roleRoutes?: readonly TeamRoleRouteDocument[];\n    readonly defaultProvider?: string;\n    readonly defaultModel?: string;\n    readonly members?: readonly TeamMemberDocument[];\n}',
+  },
+  {
+    name: 'TeamDocumentPath',
+    declaration: 'export interface TeamDocumentPath {\n    readonly path: string;\n}',
+  },
+  {
+    name: 'TeamDocumentRead',
+    declaration: 'export interface TeamDocumentRead {\n    readonly path: string | null;\n    readonly document: TeamDocument | null;\n}',
+  },
+  {
     name: 'TeamId',
     declaration: 'export type TeamId = Branded<\'TeamId\'>;',
+  },
+  {
+    name: 'TeamLlmRoleRoute',
+    declaration: 'export interface TeamLlmRoleRoute extends TeamLlmRoute {\n    readonly name: string;\n}',
+  },
+  {
+    name: 'TeamLlmRoute',
+    declaration: 'export interface TeamLlmRoute {\n    readonly provider: string;\n    readonly model: string;\n    readonly reasoningEffort?: ReasoningEffortId;\n}',
+  },
+  {
+    name: 'TeammateAgentOptions',
+    declaration: 'export interface TeammateAgentOptions {\n    readonly provider?: string;\n    readonly model?: string;\n    readonly reasoningEffort?: ReasoningEffortId;\n    readonly maxTokens?: number;\n}',
+  },
+  {
+    name: 'TeamMemberConfig',
+    declaration: 'export interface TeamMemberConfig {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt?: string;\n    readonly context: TeamMemberContext;\n    readonly sandboxMode?: MemberSandboxMode;\n    readonly provider?: string;\n    readonly model?: string;\n    readonly reasoningEffort?: ReasoningEffortId;\n}',
+  },
+  {
+    name: 'TeamMemberContext',
+    declaration: 'export type TeamMemberContext = \'fresh\' | \'fork\';',
+  },
+  {
+    name: 'TeamMemberDocument',
+    declaration: 'export interface TeamMemberDocument {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt?: string;\n    readonly context?: TeamMemberContext;\n    readonly sandboxMode?: MemberSandboxMode;\n    readonly provider?: string;\n    readonly model?: string;\n    readonly reasoningEffort?: string;\n}',
   },
   {
     name: 'TeamMembership',
@@ -7599,6 +7703,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TeamMessageId',
     declaration: 'export type TeamMessageId = Branded<\'TeamMessageId\'>;',
+  },
+  {
+    name: 'TeamRoleRouteDocument',
+    declaration: 'export interface TeamRoleRouteDocument extends TeamRouteDocument {\n    readonly name: string;\n}',
+  },
+  {
+    name: 'TeamRouteDocument',
+    declaration: 'export interface TeamRouteDocument {\n    readonly provider: string;\n    readonly model: string;\n    readonly reasoningEffort?: string;\n}',
   },
   {
     name: 'TeamTaskAction',
@@ -7755,6 +7867,34 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TokenUsage',
     declaration: 'export interface TokenUsage {\n    inputTokens: number;\n    outputTokens: number;\n    totalTokens?: number;\n    cacheReadTokens?: number;\n    cacheWriteTokens?: number;\n    reasoningTokens?: number;\n}',
+  },
+  {
+    name: 'TokenUsageBucketRow',
+    declaration: 'export interface TokenUsageBucketRow extends TokenUsageTotals {\n    key: string;\n}',
+  },
+  {
+    name: 'TokenUsageDashboard',
+    declaration: 'export interface TokenUsageDashboard {\n    total: TokenUsageTotals;\n    byModel: TokenUsageModelRow[];\n    peakTokens: number;\n    longestChatMs: number;\n    currentStreak: number;\n    longestStreak: number;\n    firstDay: number | null;\n    lastDay: number | null;\n    activeDays: string[];\n    byDay: Record<string, TokenUsageModelRow[]>;\n    byWeek: Record<string, TokenUsageModelRow[]>;\n    byHour: Record<string, TokenUsageBucketRow[]>;\n    bySession: TokenUsageSessionRow[];\n    scanned: number;\n    sessionCount: number;\n}',
+  },
+  {
+    name: 'TokenUsageModelRow',
+    declaration: 'export interface TokenUsageModelRow extends TokenUsageTotals {\n    key: string;\n    provider: string;\n    model: string;\n}',
+  },
+  {
+    name: 'TokenUsageQuery',
+    declaration: 'export interface TokenUsageQuery {\n    force?: boolean;\n}',
+  },
+  {
+    name: 'TokenUsageResponse',
+    declaration: 'export interface TokenUsageResponse extends TokenUsageDashboard {\n    cachedAt: number;\n    cached: boolean;\n}',
+  },
+  {
+    name: 'TokenUsageSessionRow',
+    declaration: 'export interface TokenUsageSessionRow extends TokenUsageTotals {\n    sessionId: string;\n    cwd: string;\n    createdAt: number;\n    firstAt: number;\n    lastAt: number;\n}',
+  },
+  {
+    name: 'TokenUsageTotals',
+    declaration: 'export interface TokenUsageTotals {\n    inputTokens: number;\n    outputTokens: number;\n    cacheReadTokens: number;\n    cacheWriteTokens: number;\n    reasoningTokens: number;\n    totalTokens: number;\n    calls: number;\n}',
   },
   {
     name: 'ToolAdditionBlock',

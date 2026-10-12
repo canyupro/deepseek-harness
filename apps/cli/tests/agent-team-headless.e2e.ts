@@ -14,6 +14,9 @@ const fixturePlugin = pathToFileURL(fileURLToPath(
 const routeFixturePlugin = pathToFileURL(fileURLToPath(
   new URL('./profiles/headless/tests/fixtures/team-route-llm.mjs', import.meta.url),
 )).href
+const sandboxFixturePlugin = pathToFileURL(fileURLToPath(
+  new URL('./profiles/headless/tests/fixtures/team-sandbox-llm.mjs', import.meta.url),
+)).href
 
 /** Compose one keyless headless profile over an isolated home. */
 async function writeProfile(cwd: string, fixture: string, extraPatch: readonly string[] = []): Promise<{ home: string; sessions: string }> {
@@ -133,6 +136,87 @@ describe('dsh run with Agent Teams enabled', () => {
       expect(toolNames).toContain('workflow')
       expect(root!.find(record => record.type === 'tool-workflow/run-end')?.data)
         .toMatchObject({ stopReason: 'completed' })
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  }, 105_000)
+
+  it('applies a member-declared sandbox scope to that member only', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'dsh-agent-team-sandbox-'))
+    try {
+      const { home, sessions } = await writeProfile(cwd, sandboxFixturePlugin, [
+        // A distinctive team default, so the plain member's own event cannot be
+        // confused with the shipped default value.
+        '- id: agent-team',
+        '  config:',
+        '    memberSandboxMode: danger-full-access',
+        '- id: agent-team-llm-settings',
+        '  name: \'@deepseek-ai/dsh-experimental-agent-team-llm-settings\'',
+        '  config:',
+        '    enabled: true',
+        '    allowedRoutes:',
+        '      - provider: deepseek-official',
+        '        model: team-sandbox-model',
+        '    members:',
+        '      - name: scoped',
+        '        description: Owns the work under an explicit read-only scope.',
+        '        sandboxMode: read-only',
+        '        provider: deepseek-official',
+        '        model: team-sandbox-model',
+        '      - name: plain',
+        '        description: Owns the work under the team default scope.',
+        '        provider: deepseek-official',
+        '        model: team-sandbox-model',
+      ])
+      const result = await launch(cwd, home, 'Create the whole configured team roster and wait for it.')
+      expect(
+        result.exitCode,
+        `dsh headless profile exited unexpectedly.\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      ).toBe(0)
+      expect(result.stderr).toBe('')
+      expect(result.stdout).toContain('TEAM_SANDBOX_OK')
+
+      const logs = (await Promise.all((await readdir(sessions, { recursive: true }))
+        .filter(file => file.endsWith('.jsonl'))
+        .map(file => readFile(join(sessions, file), 'utf8')))).map(records)
+
+      /** The child session whose first prompt names the given teammate. */
+      const childOf = (name: string) => logs.find(log => log.some(record =>
+        record.type === 'user/message'
+        && (record.data as { source?: { kind?: string } }).source?.kind === 'user'
+        && (record.data as { content?: { text?: string }[] }).content?.some(block => block.text?.includes(`You are teammate "${name}"`)),
+      ))
+      const modesOf = (name: string) => childOf(name)!
+        .filter(record => record.type === 'sandbox/mode')
+        .map(record => record.data)
+
+      // The declaring member carries its own scope, sourced from the delegation.
+      expect(modesOf('scoped')).toEqual([{ mode: 'read-only', source: 'delegation' }])
+      // The member that declared nothing falls back to the team default, so the
+      // scope is applied per member rather than as one team-wide switch.
+      expect(modesOf('plain')).toEqual([{ mode: 'danger-full-access', source: 'delegation' }])
+
+      /** Every policy event one member's session recorded, in order. */
+      const policyEvents = (name: string) => childOf(name)!
+        .filter(record => record.type === 'sandbox/mode' || record.type === 'approval/policy' || record.type === 'permission/preset')
+        .map(record => record.data)
+
+      // The declaring member runs read-only, sourced from the delegation.
+      expect(modesOf('scoped')).toEqual([{ mode: 'read-only', source: 'delegation' }])
+      // The member that declared nothing keeps the team default, so the scope is
+      // applied per member rather than as one team-wide switch.
+      expect(modesOf('plain')).toEqual([{ mode: 'danger-full-access', source: 'delegation' }])
+      // Both members approve nothing, whatever their scope.
+      expect(policyEvents('scoped')).toContainEqual({ policy: 'never', source: 'delegation' })
+      expect(policyEvents('plain')).toContainEqual({ policy: 'never', source: 'delegation' })
+      // No member is handed the `auto` preset: the read-only member carries no
+      // preset at all, and the default-scoped member's preset matches its scope.
+      expect(policyEvents('scoped').filter(data => 'preset' in data)).toEqual([])
+      expect(policyEvents('plain').filter(data => 'preset' in data))
+        .toEqual([{ preset: 'danger-full-access' }])
+      for (const name of ['scoped', 'plain']) {
+        expect(policyEvents(name).filter(data => 'preset' in data && data.preset === 'auto')).toEqual([])
+      }
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }

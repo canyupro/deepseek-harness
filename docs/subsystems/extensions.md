@@ -109,7 +109,7 @@ async run( agent: Agent, pluginId: CordisDynamicPluginId, packageId: CordisDynam
 
 /**
  * Start Host code for an approved request or a direct panel gesture.
- * @param agent - Agent whose Session must own the Plugin.
+ * @param agentId - Session identity that must own the Plugin.
  * @param pluginId - Stable Plugin identity to activate.
  * @param packageId - Immutable Package version to activate.
  * @param mode - Whether to run the current version or switch versions.
@@ -117,16 +117,16 @@ async run( agent: Agent, pluginId: CordisDynamicPluginId, packageId: CordisDynam
  * @param approveFutureVersions - Whether this approval covers later Packages of the same Plugin.
  * @returns The exact Host activation or a failure message.
  */
-@Remote('runHostHalf') async runHostHalf( agent: Agent, pluginId: CordisDynamicPluginId, packageId: CordisDynamicPackageId, mode: CordisDynamicRunMode, requestId: ApprovalRequestId | null, approveFutureVersions: boolean, ): Promise<DynamicCordisHostHalfResult>
+@Remote('runHostHalf') async runHostHalf( agentId: SessionId, pluginId: CordisDynamicPluginId, packageId: CordisDynamicPackageId, mode: CordisDynamicRunMode, requestId: ApprovalRequestId | null, approveFutureVersions: boolean, ): Promise<DynamicCordisHostHalfResult>
 
 /**
  * Fetch Client code for the exact active run.
- * @param agent - Agent whose Session must own the Plugin.
+ * @param agentId - Session identity that must own the Plugin.
  * @param pluginId - Stable Plugin identity to read.
  * @param pluginRunId - Exact active run authorized to receive source.
  * @returns Client source and its Plugin, Package, and run identities.
  */
-@Remote('getClientCode') getClientCode( agent: Agent, pluginId: CordisDynamicPluginId, pluginRunId: CordisDynamicPluginRunId, ): DynamicCordisClientSource
+@Remote('getClientCode') getClientCode( agentId: SessionId, pluginId: CordisDynamicPluginId, pluginRunId: CordisDynamicPluginRunId, ): DynamicCordisClientSource
 
 /**
  * Resolve one model-driven Client activation request.
@@ -138,12 +138,12 @@ async run( agent: Agent, pluginId: CordisDynamicPluginId, packageId: CordisDynam
 
 /**
  * Settle a direct panel run after this page loaded or failed its Client half.
- * @param agent - Agent whose Session must own the Plugin.
+ * @param agentId - Session identity that must own the Plugin.
  * @param pluginId - Stable Plugin identity being settled.
  * @param resolution - Exact Client activation result from the acting page.
  * @returns The committed activation or its failure.
  */
-@Remote('settleUserRun') async settleUserRun( agent: Agent, pluginId: CordisDynamicPluginId, resolution: DynamicCordisRunResolution, ): Promise<DynamicCordisRunResponse>
+@Remote('settleUserRun') async settleUserRun( agentId: SessionId, pluginId: CordisDynamicPluginId, resolution: DynamicCordisRunResolution, ): Promise<DynamicCordisRunResponse>
 
 /**
  * Stop the active run while retaining every Package version.
@@ -292,7 +292,7 @@ inspectPackage( agent: Agent, pluginId: CordisDynamicPluginId, packageId: Cordis
 @Remote('invoke') async invoke( pluginId: CordisDynamicPluginId, pluginRunId: CordisDynamicPluginRunId, method: string, args: JsonValue, ): Promise<DynamicCordisInvokeResult>
 ```
 
-Types: [Agent](core.md)
+Types: [Agent](core.md) · [SessionId](core.md)
 
 Source: [`packages/extensions/cordis-host-runner/src/index.ts`](../../packages/extensions/cordis-host-runner/src/index.ts)
 

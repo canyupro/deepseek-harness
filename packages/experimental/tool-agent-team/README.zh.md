@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当模型应该通过工具运行一支团队时，在 `@deepseek-ai/dsh-experimental-agent-team` 之上挂载本包。挂载后，每个团队成员——Lead 与每个 teammate——都会获得相同的十个工具，以及相同的协作策略。`spawn_team` 一次性建出已配置的编制，`spawn_teammate` 建出单个成员；两者都在初始任务前加上成员的角色和名字。
+当模型应该通过工具运行一支团队时，在 `@deepseek-ai/dsh-experimental-agent-team` 之上挂载本包。挂载后，每个团队成员——Lead 与每个 teammate——都会获得相同的十个工具，以及相同的协作策略。`spawn_team` 一次性建出已配置的编制，`spawn_teammate` 建出单个成员；两者都在初始任务前加上成员的角色和名字。本插件需要 `llm` 服务；若组合挂载了它却没有 LLM 提供方，插件会保持未激活，而不是等到创建 teammate 时才失败。
 
 ### 何时选择
 

@@ -26,7 +26,7 @@ import type { InferValue, ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
 /** Cordis plugin name. */
 export const name = 'tool-agent-team'
 /** Services required by the Team tool plugin. */
-export const inject = ['agents', 'agentTeams', 'tools', 'systemPrompt']
+export const inject = ['agents', 'agentTeams', 'llm', 'tools', 'systemPrompt']
 
 /** Tool routing configuration. */
 export interface Config {
@@ -298,6 +298,8 @@ async function resolveTeammateAgentOptions(
 
   const parentOptions = parentAgentOptionsForDelegation(lead)
   const agentOptions = requestedAgentOptions(parentOptions, configured, request, true)
+  /* v8 ignore next -- requestedAgentOptions always answers on this path: the
+     caller returns early unless a configured route exists or a request selects one. */
   if (agentOptions === undefined) return undefined
   assertAllowedModelSelection(
     settings?.enabled === true ? { routes: settings.allowedRoutes } : undefined,
@@ -305,11 +307,7 @@ async function resolveTeammateAgentOptions(
     agentOptions,
     request,
   )
-  const llm = ctx.get('llm')
-  if (llm === undefined) {
-    throw new Error('spawn_teammate cannot resolve the teammate LLM route because the `llm` service is unavailable')
-  }
-  await preflightChildLlmRoute(llm, parentOptions, agentOptions, signal)
+  await preflightChildLlmRoute(ctx.llm, parentOptions, agentOptions, signal)
   return agentOptions
 }
 

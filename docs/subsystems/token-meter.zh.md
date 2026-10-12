@@ -103,4 +103,21 @@ estimateMessage(message: Message): number
 Types: [EpochHeader](session.zh.md) · [Message](llm-streaming.zh.md) · [Session](session.zh.md)
 
 Source: [`packages/llm/token-meter/src/index.ts`](../../packages/llm/token-meter/src/index.ts)
+
+<a id="ctxtokenusagecontroller--tokenusagecontroller"></a>
+
+### `ctx.tokenUsageController` — `TokenUsageController`
+
+Host service backing the generated `ctx.remote.tokenUsage` namespace. Without `sessionQuery` the fiber stays pending, so a mounted controller always has a corpus to read and never answers "unavailable".
+
+```ts cordis-catalog
+/**
+ * Read the whole-corpus usage dashboard, from cache unless forced.
+ * @param request - whether to bypass the per-process cache.
+ * @returns the figures plus when they were computed and whether they were cached.
+ */
+@Remote('query') async query(request: TokenUsageQuery): Promise<TokenUsageResponse>
+```
+
+Source: [`packages/host/token-usage/src/index.ts`](../../packages/host/token-usage/src/index.ts)
 <!-- END GENERATED cordis-surface -->

@@ -50,6 +50,8 @@ export { REGION_BEGIN, REGION_END }
  * errors, so the partition can never silently drift from the service API.
  */
 export const SERVICE_PAGE: Record<string, string> = {
+  agentTeamLlm: 'agent-team.md',
+  tokenUsageController: 'token-meter.md',
   speechToText: 'voice-input.md',
   speechController: 'voice-input.md',
   otel: 'otel.md',
@@ -839,6 +841,12 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
+  AgentTeamLlmSettingsValue: 'the resolved team LLM settings are owned by packages/experimental/agent-team-llm-settings/README.md',
+  TeamDocument: 'the workspace team document is owned by packages/experimental/agent-team-llm-settings/README.md',
+  TeamDocumentRead: 'the workspace document read result is owned by packages/experimental/agent-team-llm-settings/README.md',
+  TeamDocumentPath: 'the saved workspace document path is owned by packages/experimental/agent-team-llm-settings/README.md',
+  TokenUsageQuery: 'the usage query is owned by packages/host/token-usage/README.md',
+  TokenUsageResponse: 'the usage response is owned by packages/host/token-usage/README.md',
   ProductEvent: 'Desktop event fields are owned by packages/client/product-analytics/README.md and src/events.ts',
   ConnectionFetchHandler: 'shared Fetch dispatch is owned by packages/client/connection/src/rpc.ts',
   ConnectionRequestRejection: 'transport rejection status is owned by packages/client/connection/src/rpc.ts',

@@ -132,6 +132,73 @@ The `agentTeam` Session projection replays one root Session into the roster, tas
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctxagentteamllm--agentteamllmsettings"></a>
+
+### `ctx.agentTeamLlm` — `AgentTeamLlmSettings`
+
+Singleton Team LLM settings owner read when a teammate is composed.
+
+Settings arrive from two layers. The global layer is the user settings document over the deployment base; the workspace layer is `<projectRoot>/.dsh/team.json`. Each field the workspace document declares replaces the global field, except `members`, which merges by name, and the merged value is validated as one document. Without a project root there is no workspace layer and the global value stands.
+
+```ts cordis-catalog
+/**
+ * Read the global layer alone, for a caller that has no workspace root.
+ * @returns the enabled state, allowed routes, configured preset routes, and fixed roster.
+ */
+current(): AgentTeamLlmSettingsValue
+
+/**
+ * Read the value both layers contribute to, for one workspace root.
+ *
+ * An absent project root or absent document leaves the global value in place;
+ * a document overrides only the fields it declares, and merges `members` by name.
+ * @param workspaceRoot - directory the project-root walk starts from; undefined reads the global layer alone.
+ * @returns the merged, validated settings including the fixed roster.
+ * @throws TeamDocumentError when the document is malformed or over the roster cap.
+ */
+resolveFor(workspaceRoot: string | undefined): AgentTeamLlmSettingsValue
+
+/**
+ * Read and validate the workspace document above one directory.
+ * @param root - directory the project-root walk starts from.
+ * @returns the validated document, or undefined when there is no project root or no document.
+ * @throws TeamDocumentError when the document is malformed or over the roster cap.
+ */
+readWorkspaceDocument(root: string): TeamDocument | undefined
+
+/**
+ * Validate and atomically replace the workspace document above one directory.
+ * @param root - directory the project-root walk starts from.
+ * @param document - document to validate and write.
+ * @returns the absolute path the document was written to.
+ * @throws TeamDocumentError when the document is malformed or over the roster cap.
+ * @throws Error when no ancestor of `root` is a project root.
+ */
+async saveWorkspaceDocument(root: string, document: TeamDocument): Promise<string>
+
+/**
+ * Read the workspace document for one Session's workspace.
+ * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
+ * @param signal - caller cancellation.
+ * @returns the document path and its contents; both are null without a project root or a document.
+ */
+@Remote readTeamDocument(workspaceFileScope: WorkspaceFileScope, signal: AbortSignal): TeamDocumentRead
+
+/**
+ * Validate and atomically write the workspace document for one Session's workspace.
+ *
+ * The path is derived from the Session's workspace root, never from the wire.
+ * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
+ * @param document - document to validate and write.
+ * @param signal - caller cancellation.
+ * @returns the absolute path the document was written to.
+ * @throws RemoteError when the workspace root has no project root.
+ */
+@Remote async saveTeamDocument( workspaceFileScope: WorkspaceFileScope, document: TeamDocument, signal: AbortSignal, ): Promise<TeamDocumentPath>
+```
+
+Source: [`packages/experimental/agent-team-llm-settings/src/index.ts`](../../packages/experimental/agent-team-llm-settings/src/index.ts)
+
 <a id="ctxagentteams--teamservice"></a>
 
 ### `ctx.agentTeams` — `TeamService`

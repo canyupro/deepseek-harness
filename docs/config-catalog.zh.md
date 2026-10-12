@@ -835,7 +835,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-agent-team`
 
 - `inject`: `agents` · `sessions` · `sessionPersistence` · `sessionProjections` · `subagents`
-- `source`: [`packages/experimental/agent-team/src/types.ts:153`](../packages/experimental/agent-team/src/types.ts)
+- `source`: [`packages/experimental/agent-team/src/types.ts:163`](../packages/experimental/agent-team/src/types.ts)
 
 ```ts config-catalog
 /** Team-service deployment limits. */
@@ -850,7 +850,23 @@ export interface Config {
   readonly maxMessageBytes?: number
   /** Maximum milliseconds allowed for Team-owned runtime disposal. */
   readonly disposalTimeoutMs?: number
+  /**
+   * Sandbox every teammate is created with. A teammate never inherits a wider
+   * scope than this from the Lead, so a team defaults to writing inside its own
+   * workspace; a deployment that genuinely needs more widens it here.
+   */
+  readonly memberSandboxMode?: MemberSandboxMode
 }
+
+/**
+ * Sandbox scope one teammate is created with.
+ *
+ * Declared locally for the same reason as {@link TeammateAgentOptions}: the
+ * Team vocabulary is shared with the browser client, while the sandbox mode
+ * type lives in a Host-only module. Assignment at the Subagent continuation
+ * seam is what keeps the two declarations compatible.
+ */
+export type MemberSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-agent-team -->
 
@@ -860,7 +876,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-agent-team-llm-settings`
 
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/experimental/agent-team-llm-settings/src/index.ts:55`](../packages/experimental/agent-team-llm-settings/src/index.ts)
+- `source`: [`packages/experimental/agent-team-llm-settings/src/index.ts:63`](../packages/experimental/agent-team-llm-settings/src/index.ts)
 
 ```ts config-catalog
 /** Optional deployment base for the Team LLM settings. */
@@ -871,11 +887,13 @@ export interface Config {
   allowedRoutes: Volatile<TeamLlmRouteInput[]>
   /** Initial per-name preset list inherited when neither layer overrides it. */
   roleRoutes: Volatile<TeamLlmRoleRouteInput[]>
+  /** Initial fixed roster inherited when neither layer overrides it. */
+  members: Volatile<TeamMemberInput[]>
   /** Initial provider for the route used when no preset and no explicit route applies. */
   defaultProvider: Volatile<string>
   /** Initial model for the route used when no preset and no explicit route applies. */
   defaultModel: Volatile<string>
-  /** Inclusive cap on fixed roster entries in one workspace document. */
+  /** Inclusive cap on fixed roster entries in either layer. */
   maxMembers: number
 }
 
@@ -894,6 +912,32 @@ export interface TeamLlmRoleRouteInput extends TeamLlmRouteInput {
   /** Teammate name this preset applies to. */
   readonly name: string
 }
+
+/** Fixed-roster fields as declared in configuration, before reasoning-effort branding. */
+export interface TeamMemberInput {
+  /** Teammate name; lowercase kebab-case, unique in the roster, never `lead`. */
+  readonly name: string
+  /** What this member is for; model-visible to the Lead when it composes the team. */
+  readonly description: string
+  /** Opening instructions this member always starts from. */
+  readonly prompt?: string
+  /** Whether the member starts a fresh Session or forks the Lead's; omission starts fresh. */
+  readonly context?: TeamMemberContext
+  /** Sandbox the member runs in; omission uses the team default. */
+  readonly sandboxMode?: MemberSandboxMode
+  /** Registered LLM provider route, paired with {@link model}. */
+  readonly provider?: string
+  /** Provider-owned exact model id, paired with {@link provider}. */
+  readonly model?: string
+  /** Adapter-owned reasoning effort; omission uses the model default. */
+  readonly reasoningEffort?: string
+}
+
+/** How a fixed member's Session starts. */
+export type TeamMemberContext = 'fresh' | 'fork'
+
+/** Sandbox scope one fixed team member may run in. */
+export type MemberSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-agent-team-llm-settings -->
 
@@ -1258,7 +1302,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-experimental-tool-agent-team`
 
-- `inject`: `agents` · `agentTeams` · `tools` · `systemPrompt`
+- `inject`: `agents` · `agentTeams` · `llm` · `tools` · `systemPrompt`
 - `source`: [`packages/experimental/tool-agent-team/src/index.ts:32`](../packages/experimental/tool-agent-team/src/index.ts)
 
 ```ts config-catalog

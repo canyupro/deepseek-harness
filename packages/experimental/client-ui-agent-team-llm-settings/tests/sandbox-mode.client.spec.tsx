@@ -115,7 +115,7 @@ describe('member sandbox controller staging', () => {
       remote: { session: { modelCatalog: () => Promise.resolve({ ok: true as const, value: { groups: [], failures: [] } }) } },
     }
     const documents = {
-      readTeamDocument: () => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json', document: undefined } }),
+      readTeamDocument: () => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json', document: null } }),
       saveTeamDocument: vi.fn(() => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } })),
     }
     const controller = new AgentTeamLlmCardController(host.scope, catalog as never, documents, () => SESSION)

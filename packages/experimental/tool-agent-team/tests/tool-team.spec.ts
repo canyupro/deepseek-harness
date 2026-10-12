@@ -899,7 +899,7 @@ describe('dsh-tool-team', () => {
     expect(text(result)).toContain('unknown tool "list_agents"')
     expect('default' in toolTeam).toBe(false)
     expect(toolTeam.name).toBe('tool-agent-team')
-    expect(toolTeam.inject).toEqual(['agents', 'agentTeams', 'tools', 'systemPrompt'])
+    expect(toolTeam.inject).toEqual(['agents', 'agentTeams', 'llm', 'tools', 'systemPrompt'])
   })
 
   it('uses configured fresh and fork provider names', async () => {
@@ -943,6 +943,56 @@ describe('dsh-tool-team', () => {
       '<system-reminder>\nYou are teammate "recon".\nYour Team Lead is named "lead".\nUse list_agents({}) to find your teammates and their names.\nTo message your Team Lead, use send_message({ target: "lead", message: "..." }).\nTo message another teammate, use send_message({ target: "<teammate name>", message: "..." }).\n</system-reminder>\n\n',
       'survey the tree',
     ])
+  })
+
+  it('refuses spawn_team when the team settings service is not composed in', async () => {
+    const root = projectRoot()
+    const { ctx, lead } = await setup(['hang'], false, root)
+    // No AgentTeamLlmSettings here: the roster has no readable source at all.
+    const created = await execute(ctx, lead, 'spawn_team', {})
+
+    expect(created.isError).toBe(true)
+    expect(text(created)).toMatch(/`agentTeamLlm` service is unavailable/u)
+    expect(ctx.agentTeams.listMembers(lead).map(member => member.name)).toEqual(['lead'])
+  })
+
+  it('refuses a teammate request that names only half a route pair', async () => {
+    const { ctx, lead } = await setup(['hang'])
+
+    // A half pair is refused at the tool boundary rather than silently inheriting
+    // a route the caller did not name.
+    const created = await execute(ctx, lead, 'spawn_teammate', {
+      name: 'half-route', description: 'half a route', prompt: 'go', provider: 'mock',
+    })
+
+    expect(created.isError).toBe(true)
+    expect(text(created)).toMatch(/`provider` and `model` must be supplied together/u)
+    expect(ctx.agentTeams.listMembers(lead).map(member => member.name)).toEqual(['lead'])
+  })
+
+  it('carries a roster member\'s own reasoning effort into the child route it resolves', async () => {
+    const root = projectRoot()
+    const { ctx, lead } = await setup(['hang'], false, root)
+    await ctx.plugin(AgentTeamLlmSettings, { enabled: true, allowedRoutes: [{ provider: 'mock', model: 'roster-model' }] })
+    installRoster(ctx, [
+      {
+        name: 'recon', description: 'survey the tree', prompt: 'survey the tree', context: 'fresh',
+        provider: 'mock', model: 'roster-model', reasoningEffort: 'high',
+      },
+    ])
+    const spawn = vi.spyOn(ctx.agentTeams, 'spawnTeammate')
+
+    const created = await execute(ctx, lead, 'spawn_team', {})
+    expect(created.isError, text(created)).toBe(false)
+
+    // The member's declared effort reaches the child route resolution, which the
+    // mock adapter then refuses: that refusal is what proves the field travelled
+    // rather than being dropped on the way.
+    const reported = JSON.parse(text(created)) as RosterResult
+    expect(reported.members).toEqual([])
+    expect(reported.errors[0]?.name).toBe('recon')
+    expect(reported.errors[0]?.message).toMatch(/reasoning effort "high"/u)
+    expect(spawn).not.toHaveBeenCalled()
   })
 
   it('passes a member sandbox scope to spawnTeammate, and omits it when none is declared', async () => {
