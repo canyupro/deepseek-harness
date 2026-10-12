@@ -6,7 +6,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
-import { ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { ReasoningEffortId, ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { scopeOf } from '@deepseek-ai/dsh-scope'
 import { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
@@ -977,7 +977,7 @@ describe('dsh-tool-team', () => {
     installRoster(ctx, [
       {
         name: 'recon', description: 'survey the tree', prompt: 'survey the tree', context: 'fresh',
-        provider: 'mock', model: 'roster-model', reasoningEffort: 'high',
+        provider: 'mock', model: 'roster-model', reasoningEffort: ReasoningEffortId('high'),
       },
     ])
     const spawn = vi.spyOn(ctx.agentTeams, 'spawnTeammate')

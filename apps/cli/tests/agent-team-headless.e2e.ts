@@ -199,7 +199,7 @@ describe('dsh run with Agent Teams enabled', () => {
       /** Every policy event one member's session recorded, in order. */
       const policyEvents = (name: string) => childOf(name)!
         .filter(record => record.type === 'sandbox/mode' || record.type === 'approval/policy' || record.type === 'permission/preset')
-        .map(record => record.data)
+        .map(record => record.data as Record<string, unknown>)
 
       // The declaring member runs read-only, sourced from the delegation.
       expect(modesOf('scoped')).toEqual([{ mode: 'read-only', source: 'delegation' }])
