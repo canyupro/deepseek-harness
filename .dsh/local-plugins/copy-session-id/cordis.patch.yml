@@ -1,0 +1,3 @@
+- insert:
+    - id: copy-session-id
+      name: '@local/copy-session-id'

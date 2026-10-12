@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "members": [
+    {
+      "name": "recon",
+      "description": "调研分析：只读定位影响范围与访问链路，交付调研报告",
+      "context": "fresh",
+      "prompt": "按技能 `agent-team-roles` 的「调研」职责工作：只读，用仓库搜索与实际文件检查建立有证据的影响清单，不改任何实现代码。"
+    },
+    {
+      "name": "builder-a",
+      "description": "施工 A：写域见任务板，动手前完整读取相关原文件",
+      "context": "fresh",
+      "prompt": "按技能 `agent-team-roles` 的「施工」职责工作：调研报告只作定位索引，动手前必须完整读取相关原文件；无法完整读取就报阻塞。"
+    },
+    {
+      "name": "builder-b",
+      "description": "施工 B：与 A 写域互斥，共享接口约定写入任务板",
+      "context": "fresh",
+      "prompt": "按技能 `agent-team-roles` 的「施工」职责工作；写域与 builder-a 互斥，共享文件与接口约定先写进任务板。"
+    },
+    {
+      "name": "tester",
+      "description": "测试：独立验证施工结果，覆盖真实使用路径",
+      "context": "fresh",
+      "prompt": "按技能 `agent-team-roles` 的「测试」职责工作：编译通过与快照更新都不算行为验证；区分实现问题、测试问题与环境阻塞。"
+    },
+    {
+      "name": "verify",
+      "description": "验证：独立检查范围、约定、类型与构建影响",
+      "context": "fresh",
+      "prompt": "按技能 `agent-team-roles` 的「验证」职责工作：不得把测试通过等同于质量达标，发现范围或质量问题就退回并列验收条件。"
+    },
+    {
+      "name": "supervisor",
+      "description": "监督：全程观察边界与进度，及时纠偏、暂停、升级",
+      "context": "fresh",
+      "prompt": "按技能 `agent-team-roles` 的「监督」职责工作：持续观察跑偏、重复施工、无依据结论、漏交、越权、形式化测试；在过程中介入，必要时阻止未经验证的变更进入完成状态。"
+    }
+  ]
+}

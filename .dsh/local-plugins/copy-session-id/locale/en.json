@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Copy Session ID",
+    "description": "Adds a \"Copy Session ID\" row to a session's \"⋯\" menu, copying that session's ID to the clipboard."
+  }
+}
