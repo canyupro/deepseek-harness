@@ -7,15 +7,11 @@ kind: "package-reference"
 
 English | [中文](README.zh.md)
 
-## Overview
+## Summary
 
-`agent-team-llm-settings` owns which LLM routes Agent Teams teammates may run on and which teammates a Lead may create. Settings arrive from two layers. The global layer is a deployment base under a user settings document, reached through `current()`. The workspace layer is `<projectRoot>/.dsh/team.json`, found by walking up from the session working directory to the nearest ancestor holding `.git`. Without a project root there is no workspace layer, and the global value stands.
+`agent-team-llm-settings` owns which LLM routes Agent Teams teammates may run on and which teammates a Lead may create. Settings arrive from two layers: a deployment base under a user settings document, reached through `current()`, and `<projectRoot>/.dsh/team.json`, found by walking up from the session working directory to the nearest ancestor holding `.git`. `resolveFor(workspaceRoot)` overlays them field by field — a declared field wins and the rest inherit — while `members` merges by name. An enabled result must be self-consistent, and every route is validated against the live LLM adapter before any teammate exists.
 
-`resolveFor(workspaceRoot)` merges the two layers field by field: a field the workspace document declares wins, and every other field keeps its global value. `members` merges by name instead. The global roster is the base, a document member replaces the global entry with the same name, and a name the base does not carry appends after it; a document that declares no `members` keeps the global roster unchanged. An enabled result must be self-consistent — at least one allowed route, and every preset and default route contained in that list — and a disabled result is inert. Every route is validated against the live LLM adapter before any teammate exists, so an unresolvable provider, model, or reasoning effort fails the call without consuming the teammate name.
-
-The workspace document is a version-1 JSON file validated as strictly as a wire request, and the global roster is validated the same way: an unknown field, a version other than 1, a route naming one half, a member name that is not lowercase kebab-case, a repeated name, a member named `lead`, or a roster above the configured cap all reject with a message naming the offending field or member.
-
-## Contents
+## Table of Contents
 
 - [Use this package](#use-this-package)
 - [Understand the implementation](#understand-the-implementation)
@@ -159,3 +155,13 @@ A member's `prompt` is a prefix of that member's own first request only, and sta
 - **No per-task routing** — a preset keys on the teammate name, so a task-shaped roster needs one name per route.
 - **Whole-list route overrides** — a workspace document replaces the global `allowedRoutes` or `roleRoutes` list it declares instead of extending it, so a project cannot add one route to a deployment's list; `members` merges by name instead.
 - **Roster cap is per layer** — `maxMembers` bounds each layer on its own, so a workspace document declaring a full roster of names the global roster does not carry merges into it and the composed team can reach twice that cap; `spawn_team` applies no further limit.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

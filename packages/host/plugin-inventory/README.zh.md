@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-客户端可以调用 `pluginInventory/list`，按加载顺序展示宿主的当前插件，包括每个条目的标识符、模块标识、有效启用状态、存活阶段、可用的展示文本与声明的分类——分类投影自条目静态的 `category` 元数据（`core`、`extension`、`ui`、`other`），缺失或无法识别的值归入 `other`。部署组合了 agent preset roster 时，还会报告各预设的元数据、健康状态与压平后的插件组合；没有 roster 时，预设数据缺席。当部署挂载了动态 Cordis runner 时，快照还携带 `dynamic`：会话在本进程内创建的每个用户自定义插件一行——插件 id、最新包的名称与用途、所属会话 id、版本数、激活完成的当前包，以及由 runner 运行状态推导的阶段（`running`、`waiting`、`in-flight`、`failed` 或 `stopped`）——因为这些插件以 runner 下的临时 fiber 挂载，而不是 Loader 条目。每次响应都是供展示和诊断使用的只读即时快照：它不能修改插件，也不提供历史或变更订阅。
+客户端调用 `pluginInventory/list` 按加载顺序显示宿主的当前插件：每项的标识、模块说明符、生效的启用状态、实时阶段、显示文本，以及声明的类别（`core`、`extension`、`ui` 或 `other`）。带 agent 预设编制的部署还会报告每个预设的元数据、健康状态与展平的插件组成。挂载了动态 Cordis runner 时，快照还包含本进程内某会话定义的每个用户自定义插件一行：id、最新包名与用途、所属会话、版本数、当前版本与运行阶段。每次响应都是只读的时点快照，用于展示与诊断。
 
 ## 目录
 

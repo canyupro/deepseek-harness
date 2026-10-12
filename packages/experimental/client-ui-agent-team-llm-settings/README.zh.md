@@ -9,15 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-本包是 `@deepseek-ai/dsh-experimental-agent-team-llm-settings` 的浏览器半边。它在插件页上放一张可编辑的卡片，让用户选择 Agent Teams 的 teammate 可以跑在哪些 LLM 路由上、teammate 名字没有预设时使用哪条路由，以及每个 teammate 名字各用哪条路由。
-
-卡片编辑两层。**全局**层保持走 `ctx.configForms.get('agent-team-llm-settings')` 的部署级文档。**工作区**层编辑当前会话所在项目的文档 `<projectRoot>/.dsh/team.json`，通过 Host 的 `readTeamDocument` 与 `saveTeamDocument` 两个 Remote。两层承载同样的三样东西：队友可以运行的路由、默认路由与预设路由，以及一份固定编制，其中每个成员有名称、职责描述、开场指令、上下文模式、权限范围与路由。会话 cwd 找不到项目根时，工作区页签禁用。
-
-工作区文档是一层覆盖：它没有声明的字段继承全局层，保存时只写「原本已声明」或「用户改得与继承值不同」的字段。不写某个字段，就让它继续继承。
-
-路由可以从运行中的模型目录授权，也可以在没有提供方公布时手动填写，还能编辑与移除。目录已不再公布的存量路由仍然可见、可移除；任何路由的 reasoning effort 都可编辑——留空表示不记录，沿用模型默认值。
-
-全局层把编辑暂存起来，并作为**一次带 revision 校验的写入**提交，因此并发发生的设置变更会被拒绝而不是被合并。它拒绝保存任何 Host 会拒绝的文档：启用但没有允许路由、默认路由只给了一半、预设路由不在允许清单内，以及重复的预设名字。工作区层拒绝同样的路由问题，外加该文档 schema 自己的成员规则：名字缺失或格式不对、占用了保留名 `lead`、名字重复、缺少职责描述，以及只给提供方不给模型。
+本包是 `@deepseek-ai/dsh-experimental-agent-team-llm-settings` 的浏览器半边。它在插件页加一张可编辑卡片，用来选择 teammate 可以运行在哪些 LLM 路由上、没有预设的名字使用哪条回退路由，以及每个名字的路由、成员编制与权限范围。卡片通过 `ctx.configForms` 编辑部署文档，通过 Host 的文档 Remote 编辑当前会话的 `<projectRoot>/.dsh/team.json`；工作区保存是叠加语义，只写入已声明或已改动的字段。会话 cwd 没有项目根时，工作区页签保持禁用。
 
 ## 目录
 
@@ -84,7 +76,7 @@ kind: "package-reference"
 
 #### Token 影响
 
-无。本卡片不贡献任何模型可见内容。
+无。本卡片只写入 `agent-team-llm-settings` 字段与 `<projectRoot>/.dsh/team.json`，二者都不会进入模型请求。
 
 #### KV 缓存影响
 
@@ -99,3 +91,13 @@ kind: "package-reference"
 - **会话回退是启发式的**——没有主视图保留时，工作区层解析最近更新的会话，那不一定是用户所指的那个会话。解析出的文档路径会显示出来，便于核对。
 - **成员数量上限由 Host 决定**——部署的 `maxMembers` 不在卡片读到的文档里，超限的编制会在写入时被拒，而不是在编辑器里被拦下。
 - **此处不校验成员路由是否在允许清单内**——成员的路由是否被授权，由 Host 在建人时判定。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者的工作上下文——点击展开</summary>
+
+无。
+
+</details>

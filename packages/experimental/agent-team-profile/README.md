@@ -46,8 +46,7 @@ In an existing profile’s `package.json`, keep `@deepseek-ai/dsh-experimental-a
 
 ### What you get
 
-The layer adds the Agent Teams domain and its scoped creation, roster, messaging, interruption, waiting, and task-board tools. Direct delegation uses `spawn_teammate`, which supports fresh and fork context. The `subagent` and `subagent_fork` tools and overlapping global child controls are disabled. Workflow retains the base profile’s `spawn` provider, while the underlying Subagent services and both providers remain available to teammates and workflow.
-The layer also enables Team LLM routing: the [routing settings](../agent-team-llm-settings/README.md) decide which models a teammate may run on, the default route, and per-name presets, and the [settings card](../client-ui-agent-team-llm-settings/README.md) lets a user edit them on the Plugins page.
+The layer adds the Agent Teams domain and its scoped creation, roster, messaging, interruption, waiting, and task-board tools. Direct delegation uses `spawn_teammate`, which supports fresh and fork context. The `subagent` and `subagent_fork` tools and overlapping global child controls are disabled. Workflow retains the base profile’s `spawn` provider, while the underlying Subagent services and both providers remain available to teammates and workflow. The layer also enables Team LLM routing: the [routing settings](../agent-team-llm-settings/README.md) decide which models a teammate may run on, the default route, and per-name presets, and the [settings card](../client-ui-agent-team-llm-settings/README.md) lets a user edit them on the Plugins page.
 
 In Web and Desktop conversations, the [Team UI](../client-ui-agent-team/README.md) displays the member roster and shared task board and opens teammate sessions. The same bundle switch controls the tools and browser UI. The Plugins page reads the bundle's [icon](icon.svg) from its `package.json.icon` declaration, including while the bundle is disabled.
 

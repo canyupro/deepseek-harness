@@ -9,11 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`agent-team-llm-settings` 决定 Agent Teams 的 teammate 可以跑在哪些 LLM 路由上，以及 Lead 可以创建哪些 teammate。设置来自两层。全局层是用户设置文档覆盖在部署基底之上，通过 `current()` 读取。工作区层是 `<projectRoot>/.dsh/team.json`，从会话工作目录逐级向上找到最近的含 `.git` 的祖先目录即得。找不到项目根就没有工作区层，此时全局值原样生效。
-
-`resolveFor(workspaceRoot)` 逐字段合并两层：工作区文档声明过的字段取胜，其余字段保留全局值。`members` 例外，它按名字合并：全局编制为基底，工作区里同名的成员整体替换全局那一条，全局没有的名字追加在后面；工作区未声明 `members` 时全局编制原样保留。启用状态的结果必须自洽：至少一条允许路由，且每个预设与默认路由都落在该清单内；停用状态的结果不生效。每条路由都会在创建任何 teammate 之前对运行中的 LLM adapter 校验，因此无法解析的 provider、model 或 reasoning effort 会让该调用失败，且不消耗 teammate 名称。
-
-工作区文档是一份 version 1 的 JSON 文件，校验严格程度与线上请求相同，全局编制同样如此：未知字段、version 不为 1、只给一半的路由、不符合小写连字符格式的成员名、重复的名字、名为 `lead` 的成员，以及超过配置上限的编制，都会带着指名字段或成员的报错被拒绝。
+`agent-team-llm-settings` 负责 Agent Teams 的 teammate 可以运行在哪些 LLM 路由上，以及 Lead 可以创建哪些 teammate。设置来自两层：用户设置文档之下的部署基线（经 `current()` 读取），以及 `<projectRoot>/.dsh/team.json`——从会话工作目录逐级向上找到最近的、含 `.git` 的祖先目录。`resolveFor(workspaceRoot)` 按字段叠加两者：文档声明的字段胜出，其余继承；`members` 则按名字合并。启用状态的结果必须自洽，且每条路由都会在任何 teammate 存在之前对照在线 LLM adapter 校验。
 
 ## 目录
 
@@ -159,3 +155,13 @@ Lead 的工具结果里每位成员一份 `name` 与 `description`，外加该�
 - **没有按任务的路由**——预设以 teammate 名字为键，因此按任务区分的编制需要一名一路由。
 - **路由仍整表覆盖**——工作区文档会替换它声明的全局 `allowedRoutes` 或 `roleRoutes` 清单，而不是向其中追加，因此项目无法只往部署清单里加一条路由；`members` 则是按名字合并。
 - **编制上限按层计算**——`maxMembers` 分别约束每一层，因此当工作区文档声明一整份全局编制里没有的名字时，这些成员会并入全局编制，组建出的团队最多可达该上限的两倍；`spawn_team` 不再额外限制。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者的工作上下文——点击展开</summary>
+
+无。
+
+</details>

@@ -9,22 +9,14 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package is the browser half of `@deepseek-ai/dsh-experimental-agent-team-llm-settings`. It puts one editable card on the Plugins page so a user can choose which LLM routes Agent Teams teammates may run on, which route applies when a teammate name has no preset, and which route each teammate name uses.
+This package is the browser half of `@deepseek-ai/dsh-experimental-agent-team-llm-settings`. It adds one editable card on the Plugins page for choosing which LLM routes teammates may run on, the fallback route for names without a preset, and each name's route, member composition, and permission scope. The card edits the deployment document over `ctx.configForms` and the open session's `<projectRoot>/.dsh/team.json` over the Host document Remotes; a workspace save is an overlay that writes only declared or changed fields. A session whose cwd has no project root leaves the workspace tab disabled.
 
-The card edits two layers. **Global** keeps the deployment-wide document over `ctx.configForms.get('agent-team-llm-settings')`. **Workspace** edits the open session's project document, `<projectRoot>/.dsh/team.json`, over the Host `readTeamDocument` and `saveTeamDocument` Remotes. Both layers carry the same three things: the routes teammates may run on, the default and preset routes, and a fixed team composition whose members each hold a name, a description, opening instructions, a context mode, a permission scope, and a route. A session whose cwd has no project root leaves the workspace tab disabled.
-
-A workspace document is an overlay: a field it does not declare inherits the global layer, and a save writes only the fields it already carried or the ones the user moved away from what they inherit. Leaving a field out keeps it inheriting.
-
-Routes can be authorized from the live model directory, typed in by hand when no provider advertises one, edited, and removed. A stored route the directory no longer advertises stays visible and removable, and any route's reasoning effort is editable — an empty field stores none and leaves the model default in place.
-
-The global layer stages edits and writes them as one revision-fenced mutation, so a concurrent settings change is rejected rather than merged. It refuses to save any document the Host would reject: an enabled document without an allowed route, a default route carrying only one of its two fields, a preset route outside the allowed list, and a repeated preset name. The workspace layer refuses the same routing faults plus every member rule of its own schema: a missing or malformed name, the reserved `lead` name, a repeated name, a missing description, and a provider without its model.
-
-## Contents
+## Table of Contents
 
 - [Use this package](#use-this-package)
 - [Understand the implementation](#understand-the-implementation)
 - [Further exploration](#further-exploration)
-- [Model experience](#model-experience)
+- [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 
 -----
@@ -73,7 +65,7 @@ The controller keeps one staged draft per layer, so editing the workspace compos
 -----
 
 <a id="model-experience"></a>
-## Model experience
+## Model Experience
 
 ### Team LLM routing card
 
@@ -83,9 +75,9 @@ Nothing. This package renders product-user UI only; it adds no prompt text, tool
 
 #### Token effect
 
-None. The card contributes no model-visible content.
+None. The card writes only `agent-team-llm-settings` fields and `<projectRoot>/.dsh/team.json`, neither of which enters a model request.
 
-#### KV cache effect
+#### KV Cache effect
 
 None by itself. A route this card changes takes effect when the next teammate is created, and that teammate stops sharing the Lead's request prefix when the two routes differ.
 
@@ -98,3 +90,13 @@ None by itself. A route this card changes takes effect when the next teammate is
 - **The session fallback is a heuristic** — with no main-view retention the workspace layer resolves the most recently updated session, which is not necessarily the session the user means. The resolved document path is shown so the choice can be checked.
 - **Member count cap is the Host's** — the deployment's `maxMembers` is not in the document the card reads, so an over-cap composition is refused by the write instead of by the editor.
 - **Member routes are not checked against the allowlist here** — whether a member's route is authorized is decided by the Host when the member is created.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

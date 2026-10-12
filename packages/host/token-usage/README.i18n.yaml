@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/host/token-usage/README.md
+/:
+  en: e34a8d1104c99447
+  zh: c49372d66a706cd8
+/deepseek-ai-dsh-host-token-usage:
+  en: 53c15c07afcdc7ae
+  zh: 0fe395c49be5c2c7
+/deepseek-ai-dsh-host-token-usage/summary:
+  en: ac46ea7787f12bf3
+  zh: c4cac4afa4d439ff
+/deepseek-ai-dsh-host-token-usage/table-of-contents:
+  en: f641657ee1160fc7
+  zh: a12a31e05c1afef7
+/deepseek-ai-dsh-host-token-usage/use-this-package:
+  en: 67782a4a98daa403
+  zh: 390b2d97d2326706
+/deepseek-ai-dsh-host-token-usage/understand-the-implementation:
+  en: 75e9402422d58437
+  zh: a8f9aa7266357c88
+/deepseek-ai-dsh-host-token-usage/further-exploration:
+  en: 8592887cbe7e7709
+  zh: b245e11d44a74b18
+/deepseek-ai-dsh-host-token-usage/model-experience:
+  en: 0335f1ec7c2603a1
+  zh: a252956ee179ce8b
+/deepseek-ai-dsh-host-token-usage/model-experience/kv-cache-effect:
+  en: ca75c51c89c2c9b0
+  zh: de54f3467ef3b9be
+/deepseek-ai-dsh-host-token-usage/known-limitations-and-deferred-work:
+  en: e6f47266f0f39fc2
+  zh: e5005a88fa4ed226
+/deepseek-ai-dsh-host-token-usage/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98
