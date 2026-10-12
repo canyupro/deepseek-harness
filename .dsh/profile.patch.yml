@@ -175,3 +175,14 @@
     captureFetch: true
     clientOrigins:
       - dsh-app://app
+
+- id: agent-team
+  name: '@deepseek-ai/dsh-experimental-agent-team'
+  config:
+    maxMembers: 8
+    maxTasks: 256
+    maxPendingMessagesPerMember: 64
+    maxMessageBytes: 65536
+    disposalTimeoutMs: 5000
+    # 成员默认权限：可写当前工作区（写不出项目外；approval 仍钉 never，不走 auto 审核门）
+    memberSandboxMode: workspace-write
