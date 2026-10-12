@@ -526,7 +526,7 @@ describe('agent-team-llm-settings workspace document', () => {
   it('refuses to write a document it cannot validate', async () => {
     await mount()
 
-    await expect(ctx.agentTeamLlm.saveWorkspaceDocument(repo, { version: 1, enabled: 'yes' } as unknown as TeamDocument))
+    await expect(ctx.agentTeamLlm.saveWorkspaceDocument(repo, JSON.parse('{"version": 1, "enabled": "yes"}') as TeamDocument))
       .rejects.toThrow(/team\.json/u)
     expect(ctx.agentTeamLlm.readWorkspaceDocument(repo)).toBeUndefined()
   })

@@ -56,7 +56,7 @@ export function readDocumentFile(path: string): unknown {
     throw error
   }
   try {
-    return JSON.parse(text) as unknown
+    return JSON.parse(text)
   } catch (error) {
     throw new TeamDocumentError(`${path} is not JSON: ${(error as Error).message}`)
   }
