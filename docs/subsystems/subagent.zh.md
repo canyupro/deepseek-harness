@@ -96,6 +96,14 @@ interface SubagentStartRequest {
    */
   readonly toolFilter?: ToolRestriction
   /**
+   * Optional explicit child sandbox mode. The in-process backend applies it in
+   * place of the mode the child would inherit from its parent's delegation, so
+   * a caller can hold a delegated child to a narrower scope than its parent
+   * without changing the parent's own policy. Omission keeps the inheritance
+   * rule: only the parent's explicit sandbox override flows down.
+   */
+  readonly sandboxMode?: SandboxMode
+  /**
    * Optional per-child persona. Requires {@link SubagentCapabilities.persona};
    * rejected at start otherwise. In-process backends register it as a scoped
    * `deployment:persona-prefix` section on the child, SHADOWING the deployment's
