@@ -8,6 +8,8 @@ It is built on an **everything-is-a-plugin** architecture and powered by [Cordis
 
 Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
 
+> **This repository is a personal fork.** [`canyupro/deepseek-harness`](https://github.com/canyupro/deepseek-harness) is maintained by an individual developer who builds a personal harness on top of the upstream project; it is not a DeepSeek AI release, and it is not the place to report the upstream project's issues. Upstream is [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness). The long-lived line of this fork is `dev`, which carries the application-layer work — plugins, team configuration, skills, and local settings — while `master` tracks upstream. Expect `dev` to diverge from upstream; it is rebased or merged forward periodically rather than maintained as a release branch.
+
 ## Developer preview
 
 DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**

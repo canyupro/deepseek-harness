@@ -8,6 +8,8 @@ DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的�
 
 文档：[https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
 
+> **本仓库是个人分支。** [`canyupro/deepseek-harness`](https://github.com/canyupro/deepseek-harness) 由个人维护，用于在上游项目之上搭建自己的 harness；它不是 DeepSeek AI 的发行版本，也不用于反馈上游项目的问题。上游是 [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness)。本 fork 的长期主线是 `dev`，承载应用层的工作——插件、团队配置、技能与本地设置；`master` 跟随上游。`dev` 预期会与上游分叉，采用定期 rebase 或合并跟进，而不是当作发行分支维护。
+
 ## 开发者预览
 
 DeepSeek Harness 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
