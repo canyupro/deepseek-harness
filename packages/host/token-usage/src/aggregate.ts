@@ -30,7 +30,10 @@ export const SESSION_ROW_LIMIT = 50
 
 const MILLISECONDS_PER_DAY = 86_400_000
 
-/** A zeroed totals accumulator. */
+/**
+ * A zeroed totals accumulator.
+ * @returns every counter at zero, ready for `addUsage` to accumulate into.
+ */
 export function zeroTotals(): TokenUsageTotals {
   return {
     inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,

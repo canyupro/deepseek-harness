@@ -8,6 +8,7 @@ import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { FRESH_MEMBER_CONTEXT, LEAD_TEAM_NAME, TEAM_MEMBER_NAME, TeamDocumentError, parseTeamDocument } from './document.ts'
 import type {
+  MemberSandboxMode,
   TeamDocument,
   TeamDocumentPath,
   TeamDocumentRead,
@@ -103,7 +104,7 @@ export interface TeamMemberInput {
   /** Whether the member starts a fresh Session or forks the Lead's; omission starts fresh. */
   readonly context?: TeamMemberContext
   /** Sandbox the member runs in; omission uses the team default. */
-  readonly sandboxMode?: string
+  readonly sandboxMode?: MemberSandboxMode
   /** Registered LLM provider route, paired with {@link model}. */
   readonly provider?: string
   /** Provider-owned exact model id, paired with {@link provider}. */
@@ -180,19 +181,12 @@ function resolveMembers(inputs: readonly TeamMemberInput[], maxMembers: number):
     if ((input.provider === undefined) !== (input.model === undefined)) {
       throw new Error(`Agent Teams LLM settings member "${input.name}" route needs both \`provider\` and \`model\``)
     }
-    const sandboxMode = input.sandboxMode
-    if (sandboxMode !== undefined
-      && sandboxMode !== 'read-only' && sandboxMode !== 'workspace-write' && sandboxMode !== 'danger-full-access') {
-      throw new Error(
-        `Agent Teams LLM settings member "${input.name}" sandboxMode must be "read-only", "workspace-write", or "danger-full-access"`,
-      )
-    }
     return {
       name: input.name,
       description: input.description,
       ...input.prompt === undefined ? {} : { prompt: input.prompt },
       context: input.context ?? FRESH_MEMBER_CONTEXT,
-      ...sandboxMode === undefined ? {} : { sandboxMode },
+      ...input.sandboxMode === undefined ? {} : { sandboxMode: input.sandboxMode },
       ...input.provider === undefined ? {} : { provider: input.provider },
       ...input.model === undefined ? {} : { model: input.model },
       ...input.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(input.reasoningEffort) },
