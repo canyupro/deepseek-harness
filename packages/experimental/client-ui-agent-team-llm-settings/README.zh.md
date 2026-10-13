@@ -26,11 +26,11 @@ kind: "package-reference"
 
 把它与 Host 包一起挂在 Web 或 Desktop 组合里。`@deepseek-ai/dsh-experimental-agent-team-profile` 已经同时挂载了两者。卡片出现在该 bundle 下的插件页，且仅在 Host 提供 `agent-team-llm-settings` 命名空间时出现。
 
-工作区层从**会话身份**解析项目根，因为 Host 是从会话的 cwd 推导项目根的。它使用主视图持有的会话；在没有持有主视图保留的场合——也就是设置页本身——它向 Host 询问可以提供哪些会话，并取创建时间最近的那一个，因为候选是按会话 header 的创建时间排序的，而不是按最近使用。工作区页签把这个列表渲染成一个下拉，让用户可以把该层指向另一个项目；解析出的文档路径仍显示在卡片上，使选错可见而不是无声。切到工作区页签会读取 `<projectRoot>/.dsh/team.json`；项目尚未存储该文档时从空文档开始编辑。页签会说明是哪个边界拦下的：没有提供任何会话，或会话不属于任何项目。首次读取失败会在页签下方说明原因并提供重试，因为读取成功前页签一直禁用，而它自己的错误提示位于页签内部。
+工作区层从**会话身份**解析项目根，因为 Host 是从会话的 cwd 推导项目根的。它使用主视图持有的会话；在没有持有主视图保留的场合——也就是设置页本身——它向 Host 询问可以提供哪些会话，并取创建时间最近的那一个，因为候选是按会话 header 的创建时间排序的，而不是按最近使用。工作区页签把这个列表渲染成一个下拉，让用户可以把该层指向另一个项目；解析出的文档路径仍显示在卡片上，使选错可见而不是无声。每一行取其路径中不被其他候选项目重复的最短尾部——先只用目录名，重名就带上父目录，以此类推——因为同名的两份检出否则就是无法区分的行，而原生 `<select>` 不显示承载完整路径的 `title`。切到工作区页签会读取 `<projectRoot>/.dsh/team.json`；项目尚未存储该文档时从空文档开始编辑。页签会说明是哪个边界拦下的：没有提供任何会话，或会话不属于任何项目。首次读取失败会在页签下方说明原因并提供重试，因为读取成功前页签一直禁用，而它自己的错误提示位于页签内部。
 
 本包像其它实验性客户端那样自行挂载 Host 的 `agentTeamLlm` Remote 生成物，因此工作区层无需在发布包 `@deepseek-ai/dsh-api-remotes` 装配里登记。Host 包是 peer 依赖：未挂载时工作区页签只会得到一次读失败提示。
 
-模型候选项来自部署中运行中的 adapter 目录，因此卡片列出的正是这套安装能触达的 provider 与 model。目录已不再公布的存量路由仍然可见、可移除，而不会被静默丢弃。
+模型候选项来自部署中运行中的 adapter 目录，因此卡片列出的正是这套安装能触达的 provider 与 model。所有路由只在一处列出：勾选某行即授权该路由，并在同一行露出它的 reasoning effort，因此目录公布过的路由只出现一次。目录已不再公布的存量路由仍保留在该列表中（归入未公布分组），不会被静默丢弃。手动表单用于添加目录里没有的 provider 与 model，Host 投影出该路由后它同样出现在上述列表里。
 
 权限候选项来自已组合的权限预设，是向 Host 询问而不是写死的，因此成员行给出的是本部署自己的预设名，以及每个预设写入的 sandbox mode 与 approval policy。存量旋钮对不匹配任何已配置预设时，成员行显示权限域给出的派生值，那是一个展示状态而不是可选项；组合里没有该权限域时则不提供任何具名预设。
 
@@ -47,7 +47,7 @@ kind: "package-reference"
 | [`src/client/agent-team-llm-card-controller.ts`](src/client/agent-team-llm-card-controller.ts) | 每层一份暂存草稿、Host 规则校验、目录加载、工作区读取、带 revision 校验的保存 |
 | [`src/client/team-document.ts`](src/client/team-document.ts) | 工作区文档、成员规则，以及 `readTeamDocument` / `saveTeamDocument` 的 Remote 切片 |
 | [`src/client/AgentTeamLlmCard.tsx`](src/client/AgentTeamLlmCard.tsx) | 卡片外壳、作用域切换与唯一的保存页脚 |
-| [`src/client/AgentTeamLlmFields.tsx`](src/client/AgentTeamLlmFields.tsx) | 开关、已授权路由编辑器（可手填路由与 effort）、默认路由与预设行 |
+| [`src/client/AgentTeamLlmFields.tsx`](src/client/AgentTeamLlmFields.tsx) | 开关、按行携带 effort 的路由列表、手填添加表单、默认路由与预设行 |
 | [`src/client/AgentTeamLlmMembers.tsx`](src/client/AgentTeamLlmMembers.tsx) | 两层中的编制行，含每行的权限预设、提示词、路由字段与其违反的规则 |
 
 控制器为每一层各保留一份暂存草稿，因此编辑工作区编制不会影响全局草稿。全局层通过 `ctx.configForms.get('agent-team-llm-settings')` 读取，并按同一个 revision 保存；工作区层通过两个 Remote 读写。`problemsOf` 与 Host 的路由校验保持一致，`agentTeamLlmMemberProblems` 与其成员规则一致；外壳会把两者折入 `invalid`，从而阻止保存。工作区保存会先问 `documentScope` 哪些可选字段是项目已声明或用户改过的，其余字段一律不写，让项目继续继承。

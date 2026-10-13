@@ -21,22 +21,23 @@ export type AgentTeamLlmFieldsProps = PropsLocale<'settings.agentTeamLlm'>
   & { state: AgentTeamLlmCardState }
 
 /**
- * The authorized routes as their own editor: a hand-typed provider and model
- * adds one the directory does not advertise, each authorized row carries its
- * reasoning effort and a remove control. The catalogue checkboxes above stay
- * the way to bulk-authorize what this installation already advertises.
- * @param props - locale copy, the authorized routes, and the disabled state.
- * @returns the authorized-route editor.
+ * The hand-typed routes the directory above cannot render, plus the form that
+ * adds one. A route the catalogue advertises is edited in that list, so this
+ * block stays empty until a provider the directory does not know is authorized
+ * by hand — or until the directory itself is unavailable and every authorized
+ * route falls back here.
+ * @param props - locale copy, the routes the directory does not render, and the disabled state.
+ * @returns the hand-typed-route editor.
  */
-function AuthorizedRoutes(props: {
+function ManualRoutes(props: {
   t: AgentTeamLlmFieldsProps['t']
-  allowed: readonly AgentTeamLlmCandidate[]
+  routes: readonly AgentTeamLlmCandidate[]
   disabled: boolean
   addAllowedRoute: AgentTeamLlmFieldsProps['addAllowedRoute']
   removeAllowedRoute: AgentTeamLlmFieldsProps['removeAllowedRoute']
   setRouteEffort: AgentTeamLlmFieldsProps['setRouteEffort']
 }) {
-  const { t, allowed, disabled } = props
+  const { t, routes, disabled } = props
   // Only this editor knows what has been typed, so the half-filled pair stays
   // here until both halves name a route.
   const [provider, setProvider] = useState('')
@@ -48,32 +49,33 @@ function AuthorizedRoutes(props: {
   }
   return (
     <div className={css.routes}>
-      <span className={css.fieldLabel}>{t('agentTeamLlmRoutesTitle')}</span>
-      <p className={css.hint}>{t('agentTeamLlmRoutesTitleHint')}</p>
-      {allowed.length === 0 ? <p className={css.notice}>{t('agentTeamLlmRoutesEmpty')}</p> : null}
-      <div className={css.routes}>
-        {allowed.map(route => (
-          <div key={route.key} className={css.routeRow}>
-            <span className={css.routeIdentity}>{`${route.provider}/${route.model}`}</span>
-            <Input
-              className={classNameOf(css.routeEffort)}
-              value={route.reasoningEffort ?? ''}
-              aria-label={t('agentTeamLlmRouteEffort')}
-              placeholder={t('agentTeamLlmRouteEffortPlaceholder')}
-              disabled={disabled}
-              onChange={(event) => { props.setRouteEffort(route.key, event.target.value) }}
-            />
-            <button
-              type="button"
-              className={css.removeRole}
-              disabled={disabled}
-              onClick={() => { props.removeAllowedRoute(route.key) }}
-            >
-              {t('agentTeamLlmRouteRemove')}
-            </button>
-          </div>
-        ))}
-      </div>
+      <span className={css.fieldLabel}>{t('agentTeamLlmManualTitle')}</span>
+      <p className={css.hint}>{t('agentTeamLlmManualHint')}</p>
+      {routes.length > 0 && (
+        <div className={css.routes}>
+          {routes.map(route => (
+            <div key={route.key} className={css.routeRow}>
+              <span className={css.routeIdentity}>{`${route.provider}/${route.model}`}</span>
+              <Input
+                className={classNameOf(css.routeEffort)}
+                value={route.reasoningEffort ?? ''}
+                aria-label={t('agentTeamLlmRouteEffort')}
+                placeholder={t('agentTeamLlmRouteEffortPlaceholder')}
+                disabled={disabled}
+                onChange={(event) => { props.setRouteEffort(route.key, event.target.value) }}
+              />
+              <button
+                type="button"
+                className={css.removeRole}
+                disabled={disabled}
+                onClick={() => { props.removeAllowedRoute(route.key) }}
+              >
+                {t('agentTeamLlmRouteRemove')}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className={css.routeAdd}>
         <Input
           className={classNameOf(css.routeProvider)}
@@ -126,27 +128,47 @@ export function AgentTeamLlmFields(props: AgentTeamLlmFieldsProps) {
   }
   const defaultKey = agentTeamLlmRouteKey(state.defaultRoute)
   const allowedKeys = new Set(state.allowed.map(candidate => candidate.key))
+  // An authorized route the candidate projection already carries is edited in
+  // the list above; only a route it cannot render lands in the hand-typed block.
+  const candidateKeys = new Set(state.candidates.map(candidate => candidate.key))
+  const manual = state.allowed.filter(route => !candidateKeys.has(route.key))
   const routeChoice = (candidate: AgentTeamLlmCandidate) => (
     <option key={candidate.key} value={candidate.key}>
       {`${candidate.providerName} · ${candidate.provider}/${candidate.model}`}
     </option>
   )
+  // One row per route: the checkbox authorizes it, and its reasoning effort is
+  // edited in place once authorized, so the route appears exactly once.
   const renderCandidate = (candidate: AgentTeamLlmCandidate) => (
-    <label key={candidate.key} className={css.model}>
-      <input
-        type="checkbox"
-        checked={candidate.selected}
-        disabled={disabled}
-        onChange={() => { props.toggleRoute(candidate.key) }}
-      />
-      <span>
-        <span className={css.modelName}>{candidate.modelName}</span>
-        <span className={css.route}>{`${candidate.providerName} · ${candidate.provider}/${candidate.model}`}</span>
-      </span>
+    <div key={candidate.key} className={css.model}>
+      <label className={css.modelChoice}>
+        <input
+          type="checkbox"
+          checked={candidate.selected}
+          disabled={disabled}
+          onChange={() => { props.toggleRoute(candidate.key) }}
+        />
+        <span>
+          <span className={css.modelName}>{candidate.modelName}</span>
+          <span className={css.route}>{`${candidate.providerName} · ${candidate.provider}/${candidate.model}`}</span>
+        </span>
+      </label>
       {!candidate.available
         ? <span className={css.unavailable}>{t('agentTeamLlmUnavailable')}</span>
         : null}
-    </label>
+      {candidate.selected
+        ? (
+          <Input
+            className={classNameOf(css.routeEffort)}
+            value={candidate.reasoningEffort ?? ''}
+            aria-label={t('agentTeamLlmRouteEffort')}
+            placeholder={t('agentTeamLlmRouteEffortPlaceholder')}
+            disabled={disabled}
+            onChange={(event) => { props.setRouteEffort(candidate.key, event.target.value) }}
+          />
+        )
+        : null}
+    </div>
   )
   return (
     <>
@@ -206,9 +228,9 @@ export function AgentTeamLlmFields(props: AgentTeamLlmFieldsProps) {
               : state.catalogStatus === 'ready'
                 ? <p className={css.notice}>{t('agentTeamLlmEmpty')}</p>
                 : null}
-            <AuthorizedRoutes
+            <ManualRoutes
               t={t}
-              allowed={state.allowed}
+              routes={manual}
               disabled={disabled}
               addAllowedRoute={props.addAllowedRoute}
               removeAllowedRoute={props.removeAllowedRoute}

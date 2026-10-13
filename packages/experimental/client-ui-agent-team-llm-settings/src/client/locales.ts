@@ -56,7 +56,7 @@ export type AgentTeamLlmSettingsLocaleKey =
   | 'agentTeamLlmMemberSandboxWorkspaceWrite' | 'agentTeamLlmMemberSandboxFullAccess'
   | 'agentTeamLlmMemberRoute' | 'agentTeamLlmMemberRouteNone'
   | 'agentTeamLlmMemberAdd' | 'agentTeamLlmMemberRemove'
-  | 'agentTeamLlmRoutesTitle' | 'agentTeamLlmRoutesTitleHint' | 'agentTeamLlmRoutesEmpty'
+  | 'agentTeamLlmManualTitle' | 'agentTeamLlmManualHint'
   | 'agentTeamLlmRouteProvider' | 'agentTeamLlmRouteProviderPlaceholder'
   | 'agentTeamLlmRouteModel' | 'agentTeamLlmRouteModelPlaceholder'
   | 'agentTeamLlmRouteEffort' | 'agentTeamLlmRouteEffortPlaceholder'
@@ -136,9 +136,8 @@ export const en: Record<AgentTeamLlmSettingsLocaleKey, string> = {
   agentTeamLlmMemberRouteNone: "Use the teammate's own route",
   agentTeamLlmMemberAdd: 'Add member',
   agentTeamLlmMemberRemove: 'Remove',
-  agentTeamLlmRoutesTitle: 'Authorized routes',
-  agentTeamLlmRoutesTitleHint: 'These exact routes teammates may run on. Add a route by hand when the provider does not advertise it here.',
-  agentTeamLlmRoutesEmpty: 'No route is authorized yet.',
+  agentTeamLlmManualTitle: 'Add a route by hand',
+  agentTeamLlmManualHint: 'For a provider the directory above does not advertise: type its provider and model, then authorize it in the list.',
   agentTeamLlmRouteProvider: 'Provider',
   agentTeamLlmRouteProviderPlaceholder: 'provider id',
   agentTeamLlmRouteModel: 'Model',
@@ -227,9 +226,8 @@ export const zh: Record<AgentTeamLlmSettingsLocaleKey, string> = {
   agentTeamLlmMemberRouteNone: '使用队友自己的路由',
   agentTeamLlmMemberAdd: '添加成员',
   agentTeamLlmMemberRemove: '移除',
-  agentTeamLlmRoutesTitle: '已授权路由',
-  agentTeamLlmRoutesTitleHint: '队友可以运行的精确路由。当提供方没有在此公布时，可以手动填写路由。',
-  agentTeamLlmRoutesEmpty: '尚未授权任何路由。',
+  agentTeamLlmManualTitle: '手动添加路由',
+  agentTeamLlmManualHint: '提供方没有在上方目录里公布时：填它的 provider 与 model，然后在上方列表里勾选授权。',
   agentTeamLlmRouteProvider: '提供方',
   agentTeamLlmRouteProviderPlaceholder: 'provider id',
   agentTeamLlmRouteModel: '模型',

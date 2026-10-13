@@ -99,12 +99,22 @@
 
 .model {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   min-width: 0;
   padding: 6px;
   border-radius: var(--dsw-radius-md);
+}
+
+/* The checkbox and its labels stay one click target; the effort seat is a
+   sibling, so typing in it never toggles the authorization. */
+.modelChoice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   cursor: pointer;
 }
 

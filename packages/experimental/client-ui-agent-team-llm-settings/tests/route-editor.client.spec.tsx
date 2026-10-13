@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 /**
- * The authorized-route editor: the hand-filled add form, the per-route effort
- * and remove controls, and the selectors that keep offering a stored route the
- * authorized list no longer carries.
+ * The route editor: one row per route with its effort, the hand-typed add form
+ * for what the directory cannot render, and the selectors that keep offering a
+ * stored route the authorized list no longer carries.
  */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -93,27 +93,54 @@ describe('authorized route add form', () => {
     expect((model as HTMLInputElement).value).toBe('')
   })
 
-  it('says so when nothing is authorized yet', () => {
-    renderCard({ allowed: [] })
+  it('offers the hand-typed form before anything is authorized', () => {
+    renderCard({ allowed: [], candidates: [] })
 
-    expect(screen.getByText(en.agentTeamLlmRoutesEmpty)).toBeTruthy()
+    // The add form is the block's permanent content; with no route that the
+    // directory cannot render, the block repeats no row.
+    expect(screen.getByRole('button', { name: en.agentTeamLlmRouteAdd })).toBeTruthy()
+    expect(screen.getByLabelText(en.agentTeamLlmRouteProvider)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: en.agentTeamLlmRouteRemove })).toBeNull()
   })
 })
 
 describe('authorized route row controls', () => {
-  it('edits the effort of one authorized route and removes it', () => {
+  it('edits and removes only the route the directory cannot render', () => {
     const { actions } = renderCard({
       allowed: [allowed(), allowed({ key: 'legacy\0old', provider: 'legacy', model: 'old', providerName: 'legacy', modelName: 'old', available: false, reasoningEffort: 'high' })],
     })
 
+    // The advertised route carries its effort in the directory list; the stored
+    // route the directory no longer advertises is the block's only row.
     const efforts = screen.getAllByLabelText(en.agentTeamLlmRouteEffort) as HTMLInputElement[]
     expect(efforts.map(input => input.value)).toEqual(['', 'high'])
+    expect(screen.getAllByRole('button', { name: en.agentTeamLlmRouteRemove })).toHaveLength(1)
 
     fireEvent.change(efforts[1]!, { target: { value: 'low' } })
     expect(actions.setRouteEffort).toHaveBeenCalledWith('legacy\0old', 'low')
 
-    fireEvent.click(screen.getAllByRole('button', { name: en.agentTeamLlmRouteRemove })[0]!)
-    expect(actions.removeAllowedRoute).toHaveBeenCalledWith('alpha\0fast')
+    fireEvent.click(screen.getByRole('button', { name: en.agentTeamLlmRouteRemove }))
+    expect(actions.removeAllowedRoute).toHaveBeenCalledWith('legacy\0old')
+  })
+
+  it('renders an advertised route once, with its effort in the same row', () => {
+    const stored = [{ provider: 'alpha', model: 'fast', reasoningEffort: 'high' }]
+    const projected = agentTeamLlmCandidates(
+      [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast' }] }],
+      stored,
+      new Set(['alpha\0fast']),
+    )
+
+    renderCard({ candidates: projected, allowed: projected })
+
+    // The directory list holds the route's only row: the default-route select
+    // also names it, so the count is scoped to the list.
+    const directory = screen.getByRole('group')
+    expect(within(directory).getAllByText('Alpha API · alpha/fast')).toHaveLength(1)
+    // The directory list owns authorization, so the hand-typed block keeps no
+    // row for it and offers no second remove control.
+    expect(screen.queryByRole('button', { name: en.agentTeamLlmRouteRemove })).toBeNull()
+    expect(screen.getByLabelText(en.agentTeamLlmRouteEffort)).toHaveProperty('value', 'high')
   })
 
   it('shows a stored effort on a route the catalog still advertises', () => {
@@ -145,12 +172,17 @@ describe('authorized route row controls', () => {
   })
 
   it('locks every route control while the section is read-only', () => {
-    renderCard({ writable: true, saving: true })
+    renderCard({
+      writable: true,
+      saving: true,
+      allowed: [allowed(), allowed({ key: 'legacy\0old', provider: 'legacy', model: 'old', providerName: 'legacy', modelName: 'old', available: false })],
+    })
 
     expect(screen.getByRole('button', { name: en.agentTeamLlmRouteAdd })).toHaveProperty('disabled', true)
     expect(screen.getByLabelText(en.agentTeamLlmRouteProvider)).toHaveProperty('disabled', true)
     expect(screen.getAllByLabelText(en.agentTeamLlmRouteEffort)[0]).toHaveProperty('disabled', true)
     expect(screen.getAllByRole('button', { name: en.agentTeamLlmRouteRemove })[0]).toHaveProperty('disabled', true)
+    expect(screen.getAllByRole('checkbox')[0]).toHaveProperty('disabled', true)
   })
 })
 
