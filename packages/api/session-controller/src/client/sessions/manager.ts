@@ -375,7 +375,15 @@ export class SessionManager {
     return operation
   }
 
-  private agentAvailable(sessionId: SessionId): boolean | undefined {
+  /**
+   * Whether the Host holds a live Agent for a Session, tracked from the summary
+   * and status mutations rather than the list rows: `flattenLineage` keeps
+   * availability off `SessionListEntry`, so it advances independently of a
+   * listing.
+   * @param sessionId - Session whose Agent ownership is read.
+   * @returns the current availability, or `undefined` while the list has not reached `ready`.
+   */
+  agentAvailable(sessionId: SessionId): boolean | undefined {
     return this.summaries.find(summary => summary.sessionId === sessionId)?.agentAvailable
       ?? (this.listPhase === 'ready' ? false : undefined)
   }

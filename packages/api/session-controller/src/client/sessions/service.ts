@@ -35,6 +35,13 @@ export interface SessionSummary {
   origin?: 'subagent'
   /** Host running state for `ids` members; a display fallback for other rows. */
   running: boolean
+  /**
+   * Whether the Host holds a live Agent for this Session, tracked from the Host
+   * summary and status mutations instead of the list rows. Absent until the
+   * list reaches `ready`; consumers must treat absence as "not yet known"
+   * rather than unavailable.
+   */
+  agentAvailable?: boolean
   /** Local ownership counts; Host metadata refreshes cannot overwrite them. */
   readonly retainedBy: SessionRetainInfo['retainedBy']
   /**
@@ -615,6 +622,7 @@ export class ClientSessions implements ISessions {
     const byId: Record<SessionId, SessionSummary> = {}
     for (const entry of items) {
       ids.push(entry.sessionId)
+      const agentAvailable = this.manager.agentAvailable(entry.sessionId)
       byId[entry.sessionId] = {
         id: entry.sessionId,
         displayTitle: displayTitleOf(entry.title, entry.cwd, entry.sessionId),
@@ -622,6 +630,7 @@ export class ClientSessions implements ISessions {
         retainedBy: this.retentionSnapshot(entry.sessionId).retainedBy,
         blank: entry.blank,
         updatedAt: entry.updatedAt,
+        ...(agentAvailable === undefined ? {} : { agentAvailable }),
         ...(entry.projectionValues === undefined
           ? {}
           : { projectionValues: entry.projectionValues }),
@@ -639,11 +648,13 @@ export class ClientSessions implements ISessions {
         const projectedTitle = projectionValues?.title
         const title = typeof projectedTitle === 'string' && projectedTitle !== '' ? projectedTitle : undefined
         const displayTitle = title ?? child.label ?? childId
+        const childAvailable = this.manager.agentAvailable(childId)
         if (summary === undefined) {
           byId[childId] = {
             id: childId, displayTitle, parentId: parentId as SessionId,
             origin: 'subagent', running: this.scopes.get(childId)?.session.getSnapshot().running ?? false, blank: false, updatedAt: 0,
             retainedBy: this.retentionSnapshot(childId).retainedBy,
+            ...(childAvailable === undefined ? {} : { agentAvailable: childAvailable }),
             ...(projectionValues === undefined ? {} : { projectionValues }),
             ...(title === undefined ? {} : { title }),
           }
@@ -665,6 +676,7 @@ export class ClientSessions implements ISessions {
       const projectionValues = this.manager.projectionValues(id)
       const projectedTitle = projectionValues?.title
       const title = typeof projectedTitle === 'string' && projectedTitle !== '' ? projectedTitle : previous?.title
+      const available = this.manager.agentAvailable(id)
       byId[id] = {
         ...(previous ?? { id, displayTitle: id, updatedAt: 0 }),
         running: snapshot.running,
@@ -672,6 +684,7 @@ export class ClientSessions implements ISessions {
         blank: snapshot.blank,
         parentId: address.parentSessionId,
         origin: 'subagent',
+        ...(available === undefined ? {} : { agentAvailable: available }),
         ...(projectionValues === undefined ? {} : { projectionValues }),
         ...(title === undefined ? {} : { title, displayTitle: title }),
       }
