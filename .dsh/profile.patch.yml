@@ -32,7 +32,7 @@
 - id: ui-chat
   name: '@deepseek-ai/dsh-client-ui-chat'
   config:
-    transcriptView: compact
+    transcriptView: standard
     performanceUsage: detailed
 - id: ui-settings
   name: '@deepseek-ai/dsh-client-ui-settings'
@@ -106,6 +106,12 @@
             input:
               - text
               - image
+      # opencode zen 的 go 通道：命中 pi-ai 内置目录，endpoint、协议、模型表、
+      # 上下文长度全部自带，这里只声明凭据引用（密钥在凭据库 .credentials.yaml
+      # 的 refs.OPENCODE1_API_KEY，或同名环境变量 OPENCODE1_API_KEY）。
+      opencode-go:
+        displayName: opencode go
+        apiKeyEnv: OPENCODE1_API_KEY
 - id: web-search-deepseek
   name: '@deepseek-ai/dsh-web-search-deepseek'
   config:

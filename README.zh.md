@@ -12,15 +12,18 @@ DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的�
 
 ## 在另一台机器上运行本分支
 
-`dev` 的克隆自带：harness 代码、[`.dsh/local-plugins/`](.dsh/local-plugins/) 下的本地插件 bundle、[`.dsh/team.json`](.dsh/team.json) 里的 Agent Teams 编制，以及 [`.dsh/profile.patch.yml`](.dsh/profile.patch.yml) 里本分支的部署取值。构建产物、凭据、`$DSH_HOME` 下的 profile 目录以及全部会话都留在生成本机，因此新克隆只需三步。
+`dev` 的克隆自带：harness 代码、[`.dsh/local-plugins/`](.dsh/local-plugins/) 下的本地插件 bundle、[`.dsh/team.json`](.dsh/team.json) 里的 Agent Teams 编制、[`.dsh/profile.patch.yml`](.dsh/profile.patch.yml) 里本分支的部署取值，以及 [`.dsh/dev-home/`](.dsh/dev-home/) 下的个人 home 种子。构建产物、凭据与全部会话都留在生成本机。
 
 ```sh
 git clone https://github.com/canyupro/deepseek-harness.git && cd deepseek-harness
 git switch dev
-pnpm install && pnpm run build
+pnpm install
+pnpm run dev:desktop
 ```
 
-把 overlay 里点名的提供方密钥——`MINIMAX_CN_API_KEY`、`COMMANDCODE_API_KEY`、`YJGORK_API_KEY` 与 `DEEPSEEK_API_KEY`——作为启动器的环境变量提供，然后带 overlay 启动：`pnpm dsh desktop --patch .dsh/profile.patch.yml`。启动器 overlay 叠加在 profile 自身的 patch 之上，因此这些模型路由与 inspector 来源无需改动首次启动所生成的 profile 即可生效。若某条启动路径无法透传额外参数，就把 overlay 的行并入 `$DSH_HOME/profiles/desktop/cordis.patch.yml`：两者格式相同，同 id 的行互相替换。
+home 里缺哪些，App 启动前就补哪些：`AGENTS.md`、`.agent-presets/`、`skills/` 来自 `.dsh/dev-home/`，`profiles/desktop/cordis.patch.yml` 来自 `.dsh/profile.patch.yml`。种子只补缺失项，已拥有这些文件的 home 不会被改动；`DSH_DESKTOP_SEED=0` 表示完全按现有 home 启动。
+
+把 profile 点名的提供方密钥——`MINIMAX_CN_API_KEY`、`COMMANDCODE_API_KEY`、`YJGORK_API_KEY`、`OPENCODE1_API_KEY` 与 `DEEPSEEK_API_KEY`——作为启动器环境变量提供，或写进被 gitignore 的仓库根 `.env`。不走开发启动器的打包安装，用 `pnpm dsh desktop --patch .dsh/profile.patch.yml` 应用同一批行，或把它们并入 `$DSH_HOME/profiles/desktop/cordis.patch.yml`：两者格式相同，同 id 的行互相替换。
 
 插件 bundle 只有通过安装才会进入 profile。对 `.dsh/local-plugins/copy-session-id` 执行 `plugin_manager` 的 `install_bundle`：它会记下一条 `link:` 依赖，里面是该克隆的**绝对路径**，因此换到别的路径的克隆会安装自己的 link。能被跟踪的源码正是这次安装的前提。
 

@@ -12,15 +12,18 @@ Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://de
 
 ## Running this fork on another machine
 
-A clone of `dev` carries the harness code, the local plugin bundle under [`.dsh/local-plugins/`](.dsh/local-plugins/), the Agent Teams roster in [`.dsh/team.json`](.dsh/team.json), and this fork's deployment values in [`.dsh/profile.patch.yml`](.dsh/profile.patch.yml). Build outputs, credentials, the profile directory under `$DSH_HOME`, and every session stay on the machine that created them, so a fresh checkout needs three steps.
+A clone of `dev` carries the harness code, the local plugin bundle under [`.dsh/local-plugins/`](.dsh/local-plugins/), the Agent Teams roster in [`.dsh/team.json`](.dsh/team.json), this fork's deployment values in [`.dsh/profile.patch.yml`](.dsh/profile.patch.yml), and the personal-home seed under [`.dsh/dev-home/`](.dsh/dev-home/). Build outputs, credentials, and every session stay on the machine that created them.
 
 ```sh
 git clone https://github.com/canyupro/deepseek-harness.git && cd deepseek-harness
 git switch dev
-pnpm install && pnpm run build
+pnpm install
+pnpm run dev:desktop
 ```
 
-Provide the provider keys the overlay names — `MINIMAX_CN_API_KEY`, `COMMANDCODE_API_KEY`, `YJGORK_API_KEY`, and `DEEPSEEK_API_KEY` — as launcher environment variables, then launch with the overlay: `pnpm dsh desktop --patch .dsh/profile.patch.yml`. A launcher overlay applies above the profile's own patches, so those model routes and the inspector origin reach the profile that the first launch creates without editing it. If a launch path cannot forward extra arguments, merge the overlay's rows into `$DSH_HOME/profiles/desktop/cordis.patch.yml` instead: the format is identical and rows replace each other by id.
+A home that lacks them receives the tracked copies before the app starts: `AGENTS.md`, `.agent-presets/`, and `skills/` from `.dsh/dev-home/`, and `profiles/desktop/cordis.patch.yml` from `.dsh/profile.patch.yml`. The seed copies only what is missing, so a home that already holds these files keeps them; `DSH_DESKTOP_SEED=0` starts from the home as it is.
+
+Provide the provider keys the profile names — `MINIMAX_CN_API_KEY`, `COMMANDCODE_API_KEY`, `YJGORK_API_KEY`, `OPENCODE1_API_KEY`, and `DEEPSEEK_API_KEY` — as launcher environment variables or in the gitignored root `.env`. A packaged install that does not run the development launcher applies the same rows with `pnpm dsh desktop --patch .dsh/profile.patch.yml`, or merges them into `$DSH_HOME/profiles/desktop/cordis.patch.yml`: the format is identical and rows replace each other by id.
 
 The plugin bundle reaches a profile only through an install. Run the `plugin_manager` `install_bundle` action on `.dsh/local-plugins/copy-session-id`: it records a `link:` dependency holding the absolute path of that checkout, so a clone at a different path installs its own link. The tracked source is what makes that install possible.
 

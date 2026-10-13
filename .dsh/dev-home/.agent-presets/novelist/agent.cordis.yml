@@ -1,0 +1,272 @@
+# The `novelist` agent preset: a fiction-writing agent, mounted once per process.
+#
+# This file is an AGENT-PLANE composition. The roster mounts it ONCE under a
+# standing scope; every session naming it joins by scope parentage, so the
+# tools and prompt sections registered here cover each joined agent while a
+# session's own state stays keyed per Session/Agent inside the plugins. The
+# host composition keeps everything a preset must not own: the registries
+# themselves, the sandbox and approval stack, persistence, and the model route.
+#
+# A service row here MUST sit inside a group carrying an `isolate` realm.
+# Without one it publishes into the root realm, where it is process-global —
+# another preset publishing the same name collides, and a host reader would
+# resolve one preset's instance for every session; `dsh-agent-presets` rejects
+# that at mount. `true` means an entry-local realm: this standing mount's own
+# private instance, apart from every other preset's.
+#
+# Built from the shipped `standard` tooling with a novelist identity: the
+# persona owns the six-part memory system (worldview, characters, timeline,
+# foreshadowing, chapter summaries, current plot) with detailed character
+# cards, chapters are written as plain text files ready for TTS narration,
+# and a two-round intake interview drives every new project from a one-line
+# idea to an approved setting package before the first chapter. See README.md
+# in this directory.
+
+# ── identity ────────────────────────────────────────────────────────────────
+
+# The preset's own persona, shadowing the deployment default for this agent.
+# `{{model}}` and `{{cwd}}` resolve from the agent's own route and workspace.
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: |-
+      你是一个由 {{model}} 模型驱动的小说创作 Agent，工作目录是 {{cwd}}。
+
+      你的本职是创作小说：从立项访谈、设定、大纲，到逐章写作与修订润色。你全程主导执行，但创作方向由用户拍板——必问项必须问清，默认项按推荐值填充并让用户有机会推翻。
+
+      ## 工作流程
+      1. 立项访谈：主动追问，把题材、类型、目标读者、篇幅节奏、叙事视角、文风一次问清。每轮用一次 ask_user_question 打包 3–6 题，每题第一个选项是推荐默认；用户可逐题作答、整体接受推荐，或说"你来定"。用户一句话开书（如"写一部都市职场恋爱小说"）也照此推进：一轮问清必问项，其余按推荐默认填充。完整访谈清单、粒度分层与选项设计见 novel-longform 技能（用 skill 工具加载）。
+      2. 设定包：按访谈确定的粒度产出世界观草案、核心角色卡、style-guide 与大纲（全书粗纲或卷级细纲），交用户确认——用户说"可以/直接开始"才动笔。粒度分三层：必问项由用户拍板；默认项（单章字数、更新节奏等）用户不答就用推荐值；粒度项（世界观/角色卡/大纲写到多细）由用户选择。
+      3. 逐章写作：按大纲逐章成稿；动笔前读 arcs/arc-NN.md 本章条目、state.md 与相关角色卡；写完后立即回写五件套。
+      4. 修订：按用户反馈修订；任何人物、设定、时间线的改动都同步更新对应记录文件，保证全书前后一致。
+
+      ## 回写五件套（每写完一章）
+      1. summaries.md 追加本章摘要（100–200 字）
+      2. state.md 更新当前剧情（≤500 字，末尾一句是本章结尾衔接）
+      3. outline.md 勾选本章进度
+      4. memory/timeline.md 追加本章时间点与事件
+      5. 伏笔/角色卡/世界观有变化 → 更新对应文件（台账状态、人物弧线、设定）
+
+      ## 项目文件规范（记忆系统）
+      一部小说一个项目目录（如 novels/<书名>/）：
+      - outline.md：分卷分弧大纲，每章一行提要 + 进度标记 [ ]/[x]
+      - state.md：当前剧情（≤500 字，末尾为上一章结尾衔接句）
+      - summaries.md：章节摘要，每章一节（## 第N章 标题），追加式
+      - arcs/arc-NN.md：当前弧简报（每章：目标、出场角色卡 id、伏笔编号、关键事件）
+      - memory/worldview.md：世界观（规则、地理、势力、力量体系）
+      - memory/timeline.md：时间线（时间点 | 事件 | 涉及章节）
+      - memory/foreshadowing.md：伏笔台账（编号 | 埋设章节 | 内容 | 状态 | 回收章节）
+      - memory/characters.md：角色索引（id | 姓名 | 身份 | 状态）
+      - memory/cards/<id>-<姓名>.md：详细角色卡，一张卡一个文件
+      - style-guide.md：文风、用词、叙事视角、章节字数
+      - chapters/NNN-标题.md：一章一文件，纯文本正文
+
+      ## 写作要求
+      - 语言与文风以用户指定为准，默认使用流畅中文。
+      - 章节长度默认 2000–4000 字，除非用户另有要求。
+      - 每轮动笔前先读 arcs 条目 + state.md + 相关角色卡，确保人物、时间线、伏笔前后一致；上下文宽裕时可按需多读 memory/ 下其他台账。
+      - 涉及真实史实、地理、科学等需要查证的内容，先用 web 搜索核实。
+      - 长篇连载用 goal 工具登记整体目标，用 todo 跟踪当前阶段的章节计划。
+
+      ## 工具使用
+      - 项目文件一律用 fs 工具读写。
+      - 需要用户拍板的创作选择用 ask_user_question：每轮打包 3–6 个带推荐默认的题目，不要连环单问，也不要跳过必问项擅自替他决定。
+      - 多章并行起草或大规模批改可用 workflow 派多个子代理分头写；单章审稿、润色、查一致性可用 subagent 派"编辑"子代理。
+
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+
+# ── shell ───────────────────────────────────────────────────────────────────
+
+# Both shell tools consume the host registry; their executors and `shell-env`
+# stay host-plane. Bash covers git versioning, word counts, and the future TTS
+# pipeline.
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: !!js process.platform === 'win32'
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
+
+# ── filesystem ──────────────────────────────────────────────────────────────
+
+# Both register into the host `tools` registry and provide nothing, so
+# they need no realm. The `fs` service and its policy stay in the host.
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+# ── background jobs ────────────────────────────────────────────────────────
+
+# Only the model-facing controls. The task REGISTRY stays on the host plane:
+# its producers sit outside any realm this file could put it in, and the
+# registry is keyed by owning agent anyway.
+- id: tool-jobs
+  name: '@deepseek-ai/dsh-tool-jobs'
+
+# ── skills ──────────────────────────────────────────────────────────────────
+
+# The skill REGISTRY lives in the host composition and is layered per scope:
+# these rows register into THIS preset's layer of it, so they need no realm.
+# `skill-filesystem` discovers the preset's own `skills/` directory — the
+# `novel-longform` SOP (intake interview, character-card template, ledger
+# formats) lives there and loads on demand.
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# ── goals ───────────────────────────────────────────────────────────────────
+
+# Only the model-facing tool. The goal SERVICE, its session driver, and the
+# `/goal` command stay on the host plane. A long serial is exactly the kind
+# of objective the goal tool tracks.
+- id: tool-goal
+  name: '@deepseek-ai/dsh-tool-goal'
+
+# ── plan mode ───────────────────────────────────────────────────────────────
+
+# Plan state is per-agent by nature, so an entry-local realm is not a
+# workaround here — it is the correct lifetime. This variant repurposes plan
+# mode as 策划模式: the story plan (one volume or the whole book) must be
+# approved before writing starts.
+- id: planning
+  name: cordis:group
+  group: true
+  isolate:
+    planMode: true
+  config:
+    - id: plan-mode
+      name: '@deepseek-ai/dsh-plan-mode'
+      config:
+        section: |
+              你处于策划模式。在 exit_plan_mode 成功或用户切换会话模式之前保持策划模式。用户以祈使语气说"写""开始创作""开工"等，意思是先做策划而不是立即动笔；用户的对话式同意不批准任何执行，也不结束策划模式；把确认后的决定并入策划案，通过 exit_plan_mode 提交。
+
+              先充分调研：阅读工作区已有的笔记、设定、旧稿，用非破坏性的读取与检索了解背景；需要史实或素材时用 web 搜索核实。策划期间不得创建或修改小说项目文件、不得写章节正文。
+
+              用 ask_user_question 处理只有用户能拍板的创作选择或实质性歧义（题材、类型、叙事视角、文风、篇幅、更新节奏等），不要替用户猜；能靠调研弄清的事实不要问用户。
+
+              策划案要决策完备：写明目标与成功标准；给出世界观设定、人物小传（含角色卡 id）、分卷分章大纲（全书或整卷）、伏笔计划；确定叙事视角、文风与章节字数；说明项目文件布局；覆盖前后一致性等风险与失败模式，并列出验收标准。要简洁到可通读，详细到执行阶段无需再做设计决策。
+
+              准备就绪时，调用 exit_plan_mode 提交完整策划案 markdown，以 # 标题开头。让 exit_plan_mode 成为该回复中唯一且最后的工具调用：它把策划案提交审批，批准后才在后续步骤开始写作。不要把策划案直接贴在普通回复里，也不要用文字或 ask_user_question 询问"可以开始吗"。若审批被驳回，吸收意见后重新提交。若审批通道不可用或已中止，保持策划模式并请用户手动切换模式；未经批准不得动笔。
+
+# ── compaction ──────────────────────────────────────────────────────────────
+
+# `compaction-basic` reads `toolResultPrune` through `ctx.get`, so the pruner
+# shares this realm. `tokenMeter` stays on the HOST plane: it keys every fold
+# by Session and owns the context-meter projection units the browser reads.
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 8192
+        headChars: 4096
+        tailChars: 1024
+
+# ── delegation and workflows ────────────────────────────────────────────────
+
+# The `subagents` registry and its spawn/fork backends live in the HOST
+# composition: the registry is a process singleton whose cross-session queries
+# the api-proxy serves to the browser, and a provider name may only be
+# registered once. This preset contributes the delegation TOOLS, which resolve
+# that host registry. `workflows` is different — nothing outside an agent
+# reads it — so every row that reaches it shares one entry-local realm here.
+#
+# For the novelist these tools mean parallel chapter drafts and fan-out
+# batch edits via workflow, and "editor" subagents for review and polish.
+- id: delegation
+  name: cordis:group
+  group: true
+  isolate:
+    workflowEngine: true
+  config:
+    - id: tool-subagent-control
+      name: '@deepseek-ai/dsh-tool-subagent-control'
+
+    - id: tool-subagent-list-agents
+      name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+
+    - id: tool-subagent
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent
+        backgroundMode: continuable
+
+    - id: tool-subagent-fork
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: fork
+        toolName: subagent_fork
+        backgroundMode: continuable
+
+    - id: tool-subagent-codex
+      name: '@deepseek-ai/dsh-tool-subagent'
+      disabled: true
+      config:
+        provider: codex
+        toolName: subagent_codex
+        enableRunInBackground: false
+        maxDepth: provider-managed
+
+    - id: tool-subagent-claude-code
+      name: '@deepseek-ai/dsh-tool-subagent'
+      disabled: true
+      config:
+        provider: claude-code
+        toolName: subagent_claude_code
+        enableRunInBackground: false
+        maxDepth: provider-managed
+
+    - id: workflow-worker-thread
+      name: '@deepseek-ai/dsh-workflow-worker-thread'
+      config:
+        provider: spawn
+
+    - id: tool-workflow
+      name: '@deepseek-ai/dsh-tool-workflow'
+
+    - id: tool-ralph
+      name: '@deepseek-ai/dsh-tool-ralph'
+      config:
+        subagentProvider: spawn
+        maxRounds: 64
+
+# ── remaining model-facing rows ─────────────────────────────────────────────
+
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true
+
+# The `web` service and its search provider stay in the host composition; only
+# the model-facing tool is per-session. Search covers the persona's
+# fact-checking rule; fetch stays off like the standard preset.
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    fetch: false
+    searchTimeoutMs: 60000

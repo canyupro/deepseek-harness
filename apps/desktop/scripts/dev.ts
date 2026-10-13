@@ -11,6 +11,7 @@ import { developmentRuntimeDirectory, resolveDesktopBuildTarget } from './deskto
 import { prepareDevelopmentProject } from './development-project.ts'
 import { prepareDevelopmentApp } from './development-app.ts'
 import { preparePrimaryRuntime } from './prepare-primary-runtime.ts'
+import { seedDevelopmentHome } from './seed-dev-home.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
@@ -76,6 +77,15 @@ async function launchElectron(): Promise<void> {
   console.log(`desktop development: DSH_HOME=${home}`)
   console.log(`desktop development: userData=${userData}`)
   console.log(`desktop development: inspectors main=${String(mainPort)}, renderer=${String(rendererPort)}, host=${String(hostPort)}`)
+  if (process.env.DSH_DESKTOP_SEED === '0') {
+    console.log('desktop development: DSH_DESKTOP_SEED=0 leaves the personal configuration as it is')
+  } else {
+    const seeded = await seedDevelopmentHome(home)
+    if (seeded.length > 0) {
+      console.log(`desktop development: seeded ${String(seeded.length)} personal config path(s) into ${home}`)
+      for (const path of seeded) console.log(`desktop development:   ${path}`)
+    }
+  }
   if (process.platform === 'darwin') {
     const executable = prepareDevelopmentApp({ electron, appRoot: APP_ROOT, directory: DEVELOPMENT_ROOT, home, userData,
       mainPort, rendererPort, hostPort, openDevtools: environment.DSH_DESKTOP_OPEN_DEVTOOLS! })
