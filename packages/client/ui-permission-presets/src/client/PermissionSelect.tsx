@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  IconChevronDownOutlineRegular, Menu, PermissionIconFullAccessRegular,
-  PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular, RiskConfirmation,
+  IconChevronDownOutlineRegular, IconWarningOutlineRegular, Menu, PermissionIconFullAccessRegular,
+  PermissionIconReadOnlyRegular, PermissionIconWorkspaceWriteRegular, RiskConfirmation, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
@@ -74,14 +74,20 @@ export type PermissionSelectProps =
   & PropsLocale<typeof PERMISSION_ACCESS_NS>
 
 export function PermissionSelect({
-  locked, select, usePermissionCatalog, useProjection, t,
+  locked, select, sessionId, usePermissionCatalog, useProjection, useSessions, t,
 }: PermissionSelectProps) {
   const selection = useProjection('permissions')
   const catalog = usePermissionCatalog(state => state.value)
+  // A Session the Host holds no Agent for has no log to write policy into: the
+  // switch would reject after the picker already looked available.
+  const available = useSessions(state => state.byId[sessionId]?.agentAvailable)
   const [pick, setPick] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [confirmation, setConfirmation] = useState<string | null>(null)
   const [acknowledged, setAcknowledged] = useState(false)
+  const [toast, setToast] = useState<{ seq: number; text: string } | null>(null)
+  const toastSeq = useRef(0)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
     if (!locked && selection !== undefined && catalog !== null
@@ -100,6 +106,11 @@ export function PermissionSelect({
     ? permissionLabel(currentValue, currentValue, t)
     : permissionLabel(current.value, current.name, t)
   const busy = pick !== null || confirmation !== null
+  const unavailable = available === false
+  const announce = (text: string): void => {
+    toastSeq.current += 1
+    setToast({ seq: toastSeq.current, text })
+  }
 
   const items: MenuEntry[] = catalog.options.map((option) => {
     const icon = permissionGlyph(option.value)
@@ -122,7 +133,10 @@ export function PermissionSelect({
   const submit = (id: string): void => {
     setPick(id)
     void select(id)
-      .catch(() => false)
+      .catch((error: unknown) => {
+        announce(t('error.action', { message: error instanceof Error ? error.message : String(error) }))
+        return false
+      })
       .then(() => { setPick(null) })
   }
 
@@ -174,11 +188,14 @@ export function PermissionSelect({
         portal
         anchor={
           <button
+            ref={triggerRef}
             type="button"
             className={css.trigger}
             aria-label={t('mode', { name: currentAccessibleLabel })}
-            title={current === undefined ? undefined : optionDescription(current, t)}
-            disabled={locked || busy}
+            title={unavailable
+              ? t('unavailable.locked')
+              : current === undefined ? undefined : optionDescription(current, t)}
+            disabled={locked || busy || unavailable}
             onClick={() => { setOpen(!open) }}
           >
             {permissionGlyph(currentValue) !== undefined && (
@@ -208,6 +225,15 @@ export function PermissionSelect({
           onAcknowledgedChange={setAcknowledged}
           onCancel={closeConfirmation}
           onConfirm={() => { confirmSelection(confirmation) }}
+        />
+      )}
+      {toast !== null && (
+        <Toast
+          key={toast.seq}
+          text={toast.text}
+          icon={<IconWarningOutlineRegular />}
+          anchor={triggerRef.current?.closest<HTMLElement>('[data-composer-card]') ?? null}
+          onDone={() => { setToast(null) }}
         />
       )}
     </>

@@ -30,11 +30,15 @@ const CATALOG: PermissionCatalog = {
 
 const t: PermissionSelectProps['t'] = makeTranslate(accessZh)
 
+/** The Session identity every case addresses. */
+const SESSION = 'session-under-test'
+
 function setup(options: {
   selection?: PermissionSelection | undefined
   catalog?: PermissionCatalog | null
   locked?: boolean
   select?: (preset: string) => Promise<boolean>
+  agentAvailable?: boolean
 } = {}) {
   const selection = createSnapshotStore<{ value: PermissionSelection | undefined }>({
     value: 'selection' in options ? options.selection : { currentValue: 'workspace-write' },
@@ -45,8 +49,12 @@ function setup(options: {
   const useProjection = (_key: string, selector?: (value: unknown) => unknown) =>
     bindSnapshotSelector(selection)(state => (selector ?? (value => value))(state.value))
   const select = vi.fn(options.select ?? (() => Promise.resolve(true)))
+  const useSessions = (selector: (state: unknown) => unknown) =>
+    selector({ byId: { [SESSION]: { agentAvailable: options.agentAvailable ?? true } } })
   const props = {
     locked: options.locked ?? false,
+    sessionId: SESSION,
+    useSessions,
     useProjection,
     usePermissionCatalog: bindSnapshotSelector(catalog),
     select,
@@ -231,5 +239,68 @@ describe('PermissionSelect', () => {
     expect(trigger().textContent).toBe('Custom')
     act(() => { selection.set({ value: { currentValue: 'workspace-write' } }) })
     expect(trigger().textContent).toBe('工作区内修改')
+  })
+
+  it('disables the picker while the Host holds no Agent for the Session', () => {
+    setup({ agentAvailable: false })
+
+    // A stored Session has no log for the Host to write policy into, so the
+    // switch used to reject after the picker already looked usable.
+    expect(trigger().disabled).toBe(true)
+    expect(trigger().title).toBe(accessZh['unavailable.locked'])
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('announces a rejected switch instead of dropping it', async () => {
+    const select = vi.fn(() => Promise.reject(new Error('this session is not materialized yet')))
+    setup({ selection: { currentValue: 'custom' }, select })
+
+    fireEvent.click(trigger())
+    fireEvent.click(screen.getByRole('menuitem', { name: '工作区内修改' }))
+
+    const toast = await screen.findByRole('alert')
+    expect(toast.textContent).toBe(
+      accessZh['error.action'].replace('{message}', 'this session is not materialized yet'),
+    )
+  })
+
+  it('stays silent when the switch succeeds', async () => {
+    setup({ selection: { currentValue: 'custom' } })
+
+    fireEvent.click(trigger())
+    fireEvent.click(screen.getByRole('menuitem', { name: '工作区内修改' }))
+    await act(async () => {})
+
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('announces a non-Error rejection verbatim', async () => {
+    // The wire can reject with a plain string; the banner must still name it.
+    const select = vi.fn(() => Promise.reject('host refused'))
+    setup({ selection: { currentValue: 'custom' }, select })
+
+    fireEvent.click(trigger())
+    fireEvent.click(screen.getByRole('menuitem', { name: '工作区内修改' }))
+
+    const toast = await screen.findByRole('alert')
+    expect(toast.textContent).toBe(accessZh['error.action'].replace('{message}', 'host refused'))
+  })
+
+  it('dismisses the announced failure after its hold', async () => {
+    vi.useFakeTimers()
+    try {
+      const select = vi.fn(() => Promise.reject(new Error('rejected')))
+      setup({ selection: { currentValue: 'custom' }, select })
+
+      fireEvent.click(trigger())
+      fireEvent.click(screen.getByRole('menuitem', { name: '工作区内修改' }))
+      await act(async () => {})
+      expect(screen.queryByRole('alert')).not.toBeNull()
+
+      act(() => { vi.advanceTimersByTime(10_000) })
+      expect(screen.queryByRole('alert')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

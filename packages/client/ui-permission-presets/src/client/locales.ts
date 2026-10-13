@@ -42,6 +42,8 @@ export const en = {
 export const accessZh = {
   'mode': '访问模式，当前：{name}',
   'close': '关闭',
+  'unavailable.locked': '该会话未运行，无法切换权限',
+  'error.action': '权限切换失败：{message}',
   'preset.readOnly': '仅可查看',
   'preset.workspaceWrite': '工作区内修改',
   'preset.fullAccess': '完全权限',
@@ -66,6 +68,8 @@ export type PermissionAccessKey = keyof typeof accessZh
 export const accessEn = {
   'mode': 'Access mode, current: {name}',
   'close': 'Close',
+  'unavailable.locked': 'This Session is not running, so its permission cannot be switched',
+  'error.action': 'Permission switch failed: {message}',
   'preset.readOnly': 'Read Only',
   'preset.workspaceWrite': 'Workspace Write',
   'preset.fullAccess': 'Full access',
