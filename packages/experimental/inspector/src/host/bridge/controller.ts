@@ -128,6 +128,18 @@ export interface InspectorHandle {
 }
 
 /**
+ * Serialize the exact origin a browser sends for one configured client origin.
+ * Special schemes report it through `URL.origin`. A non-special scheme such as
+ * the desktop shell's `dsh-app:` has an opaque origin: `origin` is the literal
+ * `null` while the serialization a browser sends is the scheme and host alone.
+ * @param url - parsed configured client origin.
+ * @returns the origin string to compare against the configured value.
+ */
+function canonicalClientOrigin(url: URL): string {
+  return url.origin === 'null' ? `${url.protocol}//${url.host}` : url.origin
+}
+
+/**
  * Resolve and validate all deployment-varying Inspector choices.
  * @param options - Partial caller configuration.
  * @returns A complete immutable configuration.
@@ -172,7 +184,9 @@ export function resolveInspectorOptions(options: InspectorOptions = {}): Inspect
     throw new Error('inspector: clientReconnectMaxMs must be at least clientReconnectBaseMs')
   }
   for (const origin of spec.clientOrigins) {
-    if (new URL(origin).origin !== origin) throw new Error(`inspector: client origin must be canonical: ${origin}`)
+    if (canonicalClientOrigin(new URL(origin)) !== origin) {
+      throw new Error(`inspector: client origin must be canonical: ${origin}`)
+    }
   }
   return spec
 }
