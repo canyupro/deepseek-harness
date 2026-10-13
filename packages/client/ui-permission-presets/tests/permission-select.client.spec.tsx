@@ -59,7 +59,7 @@ function setup(options: {
     usePermissionCatalog: bindSnapshotSelector(catalog),
     select,
     t,
-  } as unknown as PermissionSelectProps
+  } as PermissionSelectProps
   const view = render(<PermissionSelect {...props} />)
   return { catalog, props, select, selection, view }
 }
