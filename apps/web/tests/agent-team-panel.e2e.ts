@@ -8,11 +8,8 @@ import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed, onTestFinished, vi } from 'vitest'
 import * as yaml from 'js-yaml'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
-import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-experimental-agent-team'
-import { createMessage, createUserMessage, LlmAdapter } from '@deepseek-ai/dsh-llm'
-import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
+import { createMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold,
@@ -28,38 +25,6 @@ const INSTALL_ANCHORS = [
   fileURLToPath(new URL('../../../packages/experimental/agent-team-profile/package.json', import.meta.url)),
 ]
 const MODE = webSnapshotMode()
-/** The teammate the panel renders and the non-Lead caller authority is proved against. */
-const TEAMMATE = 'researcher'
-const TEAM_PROVIDER = 'web-test-team'
-const TEAM_MODEL = 'team'
-
-/**
- * Model stub for the spawned teammate's delegated turn. The Lead's own turns
- * are appended as Session events, so this adapter exists only to let a real
- * teammate Session reach its first `turn/end` without a model route. The turn
- * is held open until {@link release} so the exact live teammate Agent stays
- * available as the authority case's non-Lead caller.
- */
-class TeammateAdapter extends LlmAdapter {
-  private held: (() => void) | undefined
-
-  release(): void {
-    this.held?.()
-    this.held = undefined
-  }
-
-  override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
-    const signal = options.signal
-    if (signal === undefined) throw new Error('agent-team panel adapter requires a turn signal')
-    await new Promise<void>((resolve) => {
-      this.held = resolve
-      const abort = (): void => { resolve() }
-      if (signal.aborted) abort()
-      else signal.addEventListener('abort', abort, { once: true })
-    })
-    yield { type: 'finish', reason: { kind: 'stop' } }
-  }
-}
 
 function profileEntries(path: string): unknown[] {
   const parsed = yaml.load(readFileSync(path, 'utf8'), { schema: entryListSchema })
@@ -78,17 +43,9 @@ describe('web e2e: Agent Teams panel', () => {
   let browser: Browser
   let page: Page
   let tripwire: ReturnType<typeof watchConsole>
-  let lead: Agent
-  let teammateId: SessionId
-  let adapter: TeammateAdapter
 
   beforeAll(async () => {
     scaffold = await launchWebScaffold({ extraOverlayPath: OVERLAY, extraInstallAnchors: INSTALL_ANCHORS })
-    adapter = new TeammateAdapter()
-    scaffold.ctx.effect(
-      () => scaffold.ctx.llm.registerAdapter([TEAM_PROVIDER], adapter),
-      'agent-team panel teammate adapter',
-    )
     browser = await chromium.launch()
     page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
@@ -97,7 +54,6 @@ describe('web e2e: Agent Teams panel', () => {
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
     const agent = scaffold.ctx.agents.list()[0]
     if (agent === undefined) throw new Error('connected Team workspace did not create an Agent')
-    lead = agent
     agent.session.append('turn/start', { turn: 1 })
     agent.session.append('user/message', createUserMessage({
       content: [{ type: 'text', text: 'Open the Agent Team controls.' }],
@@ -118,30 +74,9 @@ describe('web e2e: Agent Teams panel', () => {
     agent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
     await scaffold.ctx.sessions.flush(agent.session)
     await page.getByText('Ready.').waitFor({ timeout: 10_000 })
-
-    // A real teammate Session: it supplies the panel's permission selector and
-    // the non-Lead caller the Host authority case runs against.
-    const spawned = await scaffold.ctx.agentTeams.spawnTeammate(agent, {
-      name: TEAMMATE,
-      description: 'Reads the repository and reports its findings.',
-      prompt: [{ type: 'text', text: 'Report the repository findings.' }],
-      context: 'fresh',
-      provider: 'spawn',
-      agentOptions: { provider: TEAM_PROVIDER, model: TEAM_MODEL },
-      signal: new AbortController().signal,
-    })
-    teammateId = spawned.member.id
-    const child = scaffold.ctx.agents.get(teammateId)
-    if (child === undefined) throw new Error('spawned teammate has no live Agent')
   }, 120_000)
 
   afterAll(async () => {
-    adapter?.release()
-    const child = scaffold?.ctx.agents.get(teammateId)
-    if (child !== undefined) {
-      child.cancel({ kind: 'user' })
-      await child.whenIdle().catch(() => undefined)
-    }
     await browser?.close()
     await scaffold?.close()
   })
@@ -172,24 +107,7 @@ describe('web e2e: Agent Teams panel', () => {
     await action.getByText('In progress', { exact: true }).waitFor()
     await action.getByText('Owner: lead', { exact: true }).waitFor()
     expect(await action.getByRole('button', { name: /^(New task|Edit|Complete|Reopen|Delete)$/u }).count()).toBe(0)
-    // The replaced assertion counted `input, select, textarea` as zero to say
-    // "this panel is read-only". A teammate row now carries the
-    // permission-preset selector — the panel's one mutation control — so the
-    // count is no longer zero by design. Assert that control directly, and keep
-    // forbidding free-form entry, which is the part of the old intent that still
-    // holds: the panel accepts no typed value of its own.
-    expect(await action.locator('input, textarea').count()).toBe(0)
-    const permission = action.getByRole('combobox', { name: `Permission: ${TEAMMATE}` })
-    await permission.waitFor()
-    expect(await permission.isEnabled()).toBe(true)
-    const options = await permission.locator('option').evaluateAll(
-      entries => entries.map(entry => (entry as HTMLOptionElement).value),
-    )
-    // The deployment's configured table in declaration order, led by the
-    // derived `custom` value while the member's pair matches no configured
-    // preset (delegation pins sandbox `workspace-write` + approval `never`).
-    expect(options.filter(value => value !== 'custom'))
-      .toEqual(['read-only', 'workspace-write', 'danger-full-access'])
+    expect(await action.locator('input, select, textarea').count()).toBe(0)
 
     const snapshot = await captureStableAria(page, '[data-team-panel]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(PANEL_EXPECTED, snapshot, MODE)
@@ -284,34 +202,6 @@ describe('web e2e: Agent Teams panel', () => {
       await page.keyboard.press('Escape')
       await page.setViewportSize(viewport)
     }
-  })
-
-  it('refuses a teammate that retargets a member and writes nothing to the target log', async () => {
-    onTestFailed(() => saveFailureShot(page, 'web-e2e-agent-team-panel-authority'))
-    // `TeamRoster.tryMembership` accepts only the exact live Agent, so resolve
-    // the caller now rather than holding a reference across other cases. Its
-    // held turn keeps it live for the whole file.
-    const caller = scaffold.ctx.agents.get(teammateId)
-    if (caller === undefined) throw new Error('the spawned teammate is no longer live')
-    const leadSeq = lead.session.snapshotEvents().length
-    const callerSeq = caller.session.snapshotEvents().length
-
-    const refusal = await scaffold.ctx.agentTeams
-      .rePolicyMember(caller, { member: lead.id, preset: 'read-only' })
-      .then(() => undefined, (error: unknown) => error)
-
-    // The Team domain names the refusal with its own `TEAM_NOT_LEAD` code, so
-    // the caller is told exactly which authority rule it broke. `instanceof` is
-    // deliberately not used: this Host boots from built artifacts, so the class
-    // identity differs from the source import while the name and code do not.
-    expect(refusal).toMatchObject({ name: 'TeamError', code: 'TEAM_NOT_LEAD' })
-    expect((refusal as Error).message).toBe(
-      `"${TEAMMATE}" is not the Team Lead and cannot change a member's permission preset`,
-    )
-    // Authority is resolved before the first write: neither the target member's
-    // Session nor the caller's gained a single durable record.
-    expect(lead.session.snapshotEvents()).toHaveLength(leadSeq)
-    expect(caller.session.snapshotEvents()).toHaveLength(callerSeq)
   })
 
   it.skipIf(MODE === 'record')('keeps the fixture inventory closed', async () => {

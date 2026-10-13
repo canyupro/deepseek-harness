@@ -1,12 +1,6 @@
 - dialog "Agent Team":
-  - heading "Members 2" [level=3]
+  - heading "Members" [level=3]
   - button "lead Current chat Inactive" [disabled]
-  - button "researcher Running"
-  - 'combobox "Permission: researcher"':
-    - option "Custom" [selected]
-    - option "read-only"
-    - option "workspace-write"
-    - option "danger-full-access"
   - heading "Shared tasks 2" [level=3]
   - article:
     - strong: Agent task

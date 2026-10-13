@@ -1,15 +1,9 @@
 /** Agent Teams service façade over roster, mailbox, task, and runtime lifecycle owners. */
 
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
-// Type-only: make `ctx.get('permissionPresets')` resolve to the optional
-// permission-preset service this domain retargets members through. It is a
-// runtime-optional collaboration, never a hard dependency.
-import type {} from '@deepseek-ai/dsh-permission-presets'
-import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { TeamActivity } from './activity.ts'
 import { errorMessage, TeamError } from './error.ts'
 import { TeamJournal } from './journal.ts'
@@ -23,7 +17,6 @@ import { TeamId, TeamTaskId } from './types.ts'
 import type {
   Config,
   CreateTeamTaskRequest,
-  MemberApprovalPolicy,
   MemberSandboxMode,
   SendTeamMessageRequest,
   SendTeamMessageResult,
@@ -63,7 +56,7 @@ function positiveLimit(name: string, value: number): number {
 }
 
 /** Agent Teams service backed by the exact live Lead Session log. */
-export class TeamService extends TypertRemoteService {
+export class TeamService extends Service {
   static inject = ['agents', 'sessions', 'sessionPersistence', 'sessionProjections', 'subagents']
 
   static Config: z<Config> = z.object({
@@ -166,64 +159,6 @@ export class TeamService extends TypertRemoteService {
       ...request,
       sandboxMode: request.sandboxMode ?? this.config.memberSandboxMode,
     })
-  }
-
-  /**
-   * Switch one live teammate's permission preset inside the caller's Team.
-   *
-   * Authority is resolved in this operation, not by a caller-side gate: the
-   * caller must be the exact live Team Lead of the Team that owns the target,
-   * and the target must be a roster row of that same Team. A target Session that is
-   * not live is rejected rather than skipped, because the durable policy
-   * events this call writes belong to a running Session. The switch goes
-   * through the permission-preset service's own write path, so it never
-   * injects a user message into the member's conversation.
-   * @param agent - exact live Team Lead authorizing the switch.
-   * @param request - target member Session and the preset name to apply.
-   * @returns the applied preset and the knob values it wrote.
-   * @throws {TeamError} when the caller is not the Team Lead, the target is not a member of the caller's Team,
-   * the target Session is not live, or no permission-preset service is composed.
-   * @throws when the preset name is unknown to the permission-preset service.
-   */
-  @Remote('rePolicyMember')
-  async rePolicyMember(
-    agent: Agent,
-    request: { readonly member: SessionId; readonly preset: string },
-  ): Promise<{ readonly preset: string; readonly sandbox: MemberSandboxMode; readonly approval: MemberApprovalPolicy }> {
-    const membership = this.roster.membership(agent)
-    // A teammate is a model-driven agent of this same Team: letting one retarget
-    // a peer would hand it a permission-escalation path over that peer.
-    if (membership.role !== 'lead') {
-      throw new TeamError(
-        `"${membership.name}" is not the Team Lead and cannot change a member's permission preset`,
-        'TEAM_NOT_LEAD',
-      )
-    }
-    if (!this.roster.list(membership).some(member => member.id === request.member)) {
-      throw new TeamError(
-        `"${request.member}" is not a member of team "${membership.id}"`,
-        'TEAM_MEMBER_NOT_FOUND',
-      )
-    }
-    const session = this.ctx.sessions.get(request.member)
-    if (session === undefined) {
-      throw new TeamError(
-        `team member "${request.member}" has no live Session to retarget`,
-        'TEAM_INVALID_TARGET',
-      )
-    }
-    const presets = this.ctx.get('permissionPresets')
-    if (presets === undefined) {
-      throw new TeamError(
-        'changing a member permission preset requires the permission-preset service',
-        'TEAM_PERMISSION_UNAVAILABLE',
-      )
-    }
-    // Resolve before writing, so an unknown preset leaves the Session untouched
-    // and the returned knobs are the ones the write just applied.
-    const applied = presets.resolve(request.preset)
-    presets.set(session, request.preset)
-    return { preset: request.preset, sandbox: applied.sandbox, approval: applied.approval }
   }
 
   /**

@@ -8,7 +8,6 @@
   "references": [
     { "path": "../../../vendor/cordis" },
     { "path": "../agent-team" },
-    { "path": "../../api/remotes/tsconfig.client.json" },
     { "path": "../../api/session-controller/tsconfig.client.json" },
     { "path": "../../client/locale/tsconfig.client.json" },
     { "path": "../../client/store" },
@@ -18,8 +17,6 @@
     { "path": "../../client/ui-session" },
     { "path": "../../client/ui-slots" },
     { "path": "../../client/ui-workspace" },
-    { "path": "../../core/session" },
-    { "path": "../../interaction/permission-presets" },
-    { "path": "../../typert/protocol" }
+    { "path": "../../core/session" }
   ]
 }

@@ -15,8 +15,6 @@
     { "path": "../../core/agent" },
     { "path": "../../subagent/subagent" },
     { "path": "../../session/session-persistence" },
-    { "path": "../../session/session-projection" },
-    { "path": "../../interaction/permission-presets" },
-    { "path": "../../typert/protocol" }
+    { "path": "../../session/session-projection" }
   ]
 }

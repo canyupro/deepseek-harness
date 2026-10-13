@@ -14,10 +14,6 @@ import {
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-// Type-only: merges the `permissions` Session projection this panel reads each
-// member's current preset from, plus the process catalog's option vocabulary.
-import type {} from '@deepseek-ai/dsh-permission-presets/client'
-import type { PresetOption } from '@deepseek-ai/dsh-permission-presets/client'
 import { NS, type TeamKey } from './locales.ts'
 import css from './TeamAction.module.css'
 
@@ -25,17 +21,6 @@ import css from './TeamAction.module.css'
 export interface TeamActionInjected {
   /** Open a roster Session from the current conversation. */
   openTeammate: (sessionId: SessionId, childSessionId: SessionId) => void
-  /**
-   * Read the deployment's selectable permission presets. Rejection means the
-   * Host composes no permission service or the read failed.
-   */
-  loadPresets: () => Promise<readonly PresetOption[]>
-  /**
-   * Switch one teammate's permission preset through the Host Team Remote.
-   * Resolves once the switch is durably logged; rejection carries the Host
-   * refusal (not the caller's Team, unknown preset, or absent live Session).
-   */
-  retargetMember: (callerSessionId: SessionId, memberSessionId: SessionId, preset: string) => Promise<void>
 }
 
 /** Durable lifecycle overlaid with the member Session's live turn activity. */
@@ -88,98 +73,55 @@ type TeamMemberRowProps = Pick<TeamActionProps,
   member: TeamMemberProjection
   memberCount: number
   onError: (message: string) => void
-  /** Configured selectable presets, or null while the catalog read is outstanding. */
-  presets: readonly PresetOption[] | null
-  /** Switch this member's preset; never rejects — the panel owns failure reporting. */
-  onRetarget: (memberSessionId: SessionId, preset: string) => Promise<void>
 }
 
 function TeamMemberRow({
-  member, memberCount, sessionId, useSessions, useSessionStatus, openTeammate, onError, presets, onRetarget, t,
+  member, memberCount, sessionId, useSessions, useSessionStatus, openTeammate, onError, t,
 }: TeamMemberRowProps) {
   const model = useSessions(state => state.projectionsBySession[member.id]?.values.modelSelection?.next?.model)
-  const permission = useSessions(state => state.projectionsBySession[member.id]?.values.permissions?.currentValue)
   const running = useSessionStatus(state => state.get(member.id)?.running)
   const summaryRunning = useSessions(state => state.byId[member.id]?.running)
-  const [pending, setPending] = useState(false)
   const status: MemberStatus = member.phase === 'active'
     ? (running ?? summaryRunning) === true ? 'running' : 'inactive'
     : member.phase
   const isCurrent = member.id === sessionId
   const highlightCurrent = isCurrent && memberCount > 1
   const inert = isCurrent || status === 'failed' || status === 'provisioning'
-  // Only a durable teammate whose Session is live and whose current value the
-  // client already holds can be retargeted: `provisioning` and `failed` rows
-  // have no Session to write to, and the Lead row uses the session picker.
-  const retargetable = member.role === 'teammate'
-    && member.phase === 'active'
-    && (status === 'running' || status === 'inactive')
-    && permission !== undefined
-    && presets !== null
-  // A value outside the configured table (`custom`, or the review
-  // integration's live `auto`) stays visible as itself so the control never
-  // misreports the member.
-  const options = permission !== undefined && presets !== null
-    && !presets.some(option => option.value === permission)
-    ? [{
-      value: permission,
-      name: permission === 'custom' ? t('presetCustom') : permission,
-    }, ...presets]
-    : presets ?? []
 
   return (
-    <div className={css.memberCell}>
-      <Tooltip label={t('open')} side="bottom" gap={4} disabled={inert}>
-        <button
-          type="button"
-          className={highlightCurrent ? `${css.member} ${css.memberCurrent}` : css.member}
-          disabled={inert}
-          onClick={() => {
-            try {
-              openTeammate(sessionId, member.id)
-            } catch (reason) {
-              onError(String(reason))
-            }
-          }}
-        >
-          <span className={css.memberDot}>
-            {status === 'inactive'
-              ? <IconUserOutlineRegular size={14} className={css.inactiveIcon} />
-              : <StateDot state={memberDotState(status)} />}
+    <Tooltip label={t('open')} side="bottom" gap={4} disabled={inert}>
+      <button
+        type="button"
+        className={highlightCurrent ? `${css.member} ${css.memberCurrent}` : css.member}
+        disabled={inert}
+        onClick={() => {
+          try {
+            openTeammate(sessionId, member.id)
+          } catch (reason) {
+            onError(String(reason))
+          }
+        }}
+      >
+        <span className={css.memberDot}>
+          {status === 'inactive'
+            ? <IconUserOutlineRegular size={14} className={css.inactiveIcon} />
+            : <StateDot state={memberDotState(status)} />}
+        </span>
+        <span className={css.memberText}>
+          <span className={css.memberName}>
+            <span className={css.memberNameText}>{member.name}</span>
+            {isCurrent && <Tag tone="info" className={css.currentTag}>{t('current')}</Tag>}
           </span>
-          <span className={css.memberText}>
-            <span className={css.memberName}>
-              <span className={css.memberNameText}>{member.name}</span>
-              {isCurrent && <Tag tone="info" className={css.currentTag}>{t('current')}</Tag>}
-            </span>
-            <small>
-              {t(memberStatusKey(status))}
-              {model !== undefined && (
-                <span className={css.memberModel}>{` · ${t('model')}: ${model}`}</span>
-              )}
-            </small>
-            {member.error !== undefined && <small className={css.diagnostic}>{member.error}</small>}
-          </span>
-        </button>
-      </Tooltip>
-      {retargetable && (
-        <select
-          className={css.memberPermission}
-          value={permission}
-          disabled={pending}
-          aria-label={`${t('permission')}: ${member.name}`}
-          onChange={(event) => {
-            const next = event.target.value
-            setPending(true)
-            void onRetarget(member.id, next).finally(() => { setPending(false) })
-          }}
-        >
-          {options.map(option => (
-            <option key={option.value} value={option.value}>{option.name}</option>
-          ))}
-        </select>
-      )}
-    </div>
+          <small>
+            {t(memberStatusKey(status))}
+            {model !== undefined && (
+              <span className={css.memberModel}>{` · ${t('model')}: ${model}`}</span>
+            )}
+          </small>
+          {member.error !== undefined && <small className={css.diagnostic}>{member.error}</small>}
+        </span>
+      </button>
+    </Tooltip>
   )
 }
 
@@ -235,11 +177,10 @@ function TaskCard({ task, t }: { task: TeamTask; t: TranslateNS<typeof NS> }) {
 
 /** Render the Team roster and read-only task board. */
 export function TeamAction({
-  sessionId, useSession, useSessions, useSessionStatus, openTeammate, loadPresets, retargetMember, t,
+  sessionId, useSession, useSessions, useSessionStatus, openTeammate, t,
 }: TeamActionProps) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [presets, setPresets] = useState<readonly PresetOption[] | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const triggerLabelRef = useRef<HTMLSpanElement>(null)
@@ -266,23 +207,6 @@ export function TeamAction({
     setOpen(false)
     setError(null)
   }, [sessionId])
-
-  // The preset table is fixed at Host composition, so one read per panel open
-  // serves every row; the panel's own failure notice reports a read that failed.
-  useEffect(() => {
-    if (!open) return
-    let cancelled = false
-    void loadPresets().then(
-      (options) => { if (!cancelled) setPresets(options) },
-      (reason: unknown) => { if (!cancelled) setError(String(reason)) },
-    )
-    return () => { cancelled = true }
-  }, [open, loadPresets])
-
-  const retarget = (memberSessionId: SessionId, preset: string): Promise<void> =>
-    retargetMember(leadSessionId, memberSessionId, preset).catch((reason: unknown) => {
-      setError(String(reason))
-    })
 
   useEffect(() => cancelHoverChange, [])
 
@@ -406,8 +330,6 @@ export function TeamAction({
                         useSessionStatus={useSessionStatus}
                         openTeammate={openTeammate}
                         onError={setError}
-                        presets={presets}
-                        onRetarget={retarget}
                         t={t}
                       />
                     ))}

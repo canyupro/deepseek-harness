@@ -266,24 +266,6 @@ listMembers(agent: Agent): TeamMemberView[]
 async spawnTeammate(caller: Agent, request: SpawnTeammateRequest): Promise<SpawnTeammateResult>
 
 /**
- * Switch one live teammate's permission preset inside the caller's Team.
- *
- * Authority is resolved in this operation, not by a caller-side gate: the
- * caller must be the exact live Team Lead of the Team that owns the target,
- * and the target must be a roster row of that same Team. A target Session that is
- * not live is rejected rather than skipped, because the durable policy
- * events this call writes belong to a running Session. The switch goes
- * through the permission-preset service's own write path, so it never
- * injects a user message into the member's conversation.
- * @param agent - exact live Team Lead authorizing the switch.
- * @param request - target member Session and the preset name to apply.
- * @returns the applied preset and the knob values it wrote.
- * @throws {TeamError} when the caller is not a Team member, the caller is not the Team Lead, the target is not a member of the caller's Team, the target Session is not live, or no permission-preset service is composed.
- * @throws when the preset name is unknown to the permission-preset service.
- */
-@Remote('rePolicyMember') async rePolicyMember( agent: Agent, request: { readonly member: SessionId; readonly preset: string }, ): Promise<{ readonly preset: string; readonly sandbox: MemberSandboxMode; readonly approval: MemberApprovalPolicy }>
-
-/**
  * Queue one durable peer message, then attempt immediate delivery.
  * @param caller - exact live sending Team member.
  * @param request - target name, content, and pre-queue cancellation.
@@ -347,7 +329,7 @@ interrupt(caller: Agent, targetName: string): { previousStatus: 'running' | 'ina
 tryMembership(agent: Agent): TeamMembership | undefined
 ```
 
-Types: [Agent](core.md) · [SessionId](core.md)
+Types: [Agent](core.md)
 
 Source: [`packages/experimental/agent-team/src/index.ts`](../../packages/experimental/agent-team/src/index.ts)
 <!-- END GENERATED cordis-surface -->

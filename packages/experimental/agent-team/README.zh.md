@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-experimental-agent-team` 把一个编码会话变成一个小型工作团队：会话中的 agent 成为 Lead，创建具名 teammate 处理委派的工作，与它们交换持久消息，在公共任务板上跟踪共享任务，并切换在线 teammate 的权限预设。消息与任务状态能挺过崩溃与重启，因此离线的 teammate 会在恢复后收到排队的消息。它本身不提供任何工具——请挂载兄弟包 `dsh-experimental-tool-agent-team`，让模型能够创建 teammate、给它们发消息并使用任务板。本包是实验性的、不承诺稳定性，并且需要持久会话存储才能激活。
+`dsh-experimental-agent-team` 把一个编码会话变成一个小型工作团队：会话中的 agent 成为 Lead，创建具名 teammate 处理委派的工作，与它们交换持久消息，并在公共任务板上跟踪共享任务。消息与任务状态能挺过崩溃与重启，因此离线的 teammate 会在恢复后收到排队的消息。它本身不提供任何工具——请挂载兄弟包 `dsh-experimental-tool-agent-team`，让模型能够创建 teammate、给它们发消息并使用任务板。本包是实验性的、不承诺稳定性，并且需要持久会话存储才能激活。
 
 ## 目录
 
@@ -62,11 +62,7 @@ kind: "package-reference"
 
 roster 显示每个成员的职责（`lead` 或 `teammate`）与当前状态：`running`、`inactive`（当前没有执行轮次，包括已加载和仅存储的成员）、`provisioning` 或 `failed`。未加载的成员会在唤醒后收到其消息。roster 只在成员当前已加载时才报告其 model：一名 teammate 可以跑在自己的路由上，因此 Lead 的 model 不能作为它的回退值。
 
-只有 Lead 可以创建 teammate、中断它们，或切换在线成员的权限预设。
-
-### 切换 teammate 的权限预设
-
-Lead 可以通过 `agentTeams.rePolicyMember` 在运行时切换在线 teammate 的权限预设：该调用经权限预设服务把预设的 sandbox mode 与 approval policy 写入该 teammate 自己的会话，因此绝不会向 teammate 的对话注入用户消息。权限在调用内部解析——只有 Team Lead 可以切换，目标必须是该 Lead 自己 Team 的 roster 成员且拥有在线会话。调用方不是 Lead、目标不是 roster 成员、目标没有在线会话、部署未组合权限预设服务，以及预设名未知，都会在任何写入之前被拒绝。该切换只改变该成员的在线会话；决定成员如何被创建的 roster 文档不受影响。
+只有 Lead 可以创建 teammate 或中断它们。
 
 ### teammate 之间的消息
 
@@ -108,7 +104,7 @@ Lead 可以停止 teammate 的当前轮次，而不会删除其排队的消息�
 
 - **持久日志，派生状态。** Lead 会话日志是唯一真源；roster、mailbox 与任务状态每次读取都从中回放。
 - **进程内归属。** 所有协作都位于单一进程；保证是重试加去重，绝不是跨进程共识。
-- **显式权限。** 每个服务方法都接收确切的实时调用方 `Agent`；只有 Lead 可以 spawn、reassign、interrupt 或切换成员的权限预设。
+- **显式权限。** 每个服务方法都接收确切的实时调用方 `Agent`；只有 Lead 可以 spawn、reassign 或 interrupt。
 - **超出上限时明确失败。** 每个限制都是经过校验的部署值，耗尽时报告类型化错误，而不是复用 id 或名字。
 
 [Agent Teams Agent Note](../../../.agents/notes/implemented/feature/2026-08-05-agent-teams.zh.md)负责身份、mailbox、任务与共享 checkout 决策。
@@ -179,7 +175,7 @@ dispose 会关闭准入、中止并等待已获准的创建与 mailbox dispatch 
 
 `agentTeam` Session 投影发布 Lead Session 的持久成员身份与阶段、成员错误、未删除任务视图，以及最后有效状态旁的 `failure`。其 `apply` 只替换被触及的集合；仅邮箱的变化保留客户端视图引用，不产生 frame。[子系统参考](../../../docs/subsystems/agent-team.zh.md#web-projection) 定义传输类型。
 
-[Web UI](../client-ui-agent-team/README.zh.md) 读取共享 Session 投影，并从 Session 状态叠加活动信息；它以 Lead Session 为调用方调用 `rePolicyMember` Remote 来切换在线 teammate 的预设。任务创建与更新由 Team agent 通过服务和模型工具完成。`./client` 导出可供浏览器使用的 roster、任务与投影类型，`./remote` 承载 Web UI 挂载的生成式 `agentTeams` Remote 贡献。
+[Web UI](../client-ui-agent-team/README.zh.md) 读取共享 Session 投影，并从 Session 状态叠加活动信息。任务创建与更新由 Team agent 通过服务和模型工具完成。`./client` 导出可供浏览器使用的 roster、任务与投影类型。
 
 ## 模型体验
 
@@ -191,7 +187,7 @@ dispose 会关闭准入、中止并等待已获准的创建与 mailbox dispatch 
 
 #### Token 影响
 
-每次 peer 投递都会把发送者前缀与消息内容加入 target 历史。任务与 roster 变更不增加模型 token；其面向模型的呈现属于 `@deepseek-ai/dsh-experimental-tool-agent-team` 结果。权限预设切换只把策略写入成员的会话而不注入用户消息，因此同样不增加模型 token。
+每次 peer 投递都会把发送者前缀与消息内容加入 target 历史。任务与 roster 变更不增加模型 token；其面向模型的呈现属于 `@deepseek-ai/dsh-experimental-tool-agent-team` 结果。
 
 #### KV Cache 影响
 
@@ -209,7 +205,6 @@ Peer 消息追加在 target 可复用历史前缀之后。冷恢复会先复用�
 - **单进程、共享 checkout**——成员共享 cwd，修改立即可见；本包不提供 worktree、远端成员、merge 或文件锁。
 - **write scope 仅作提示**——Bash、formatter、代码生成器与直接外部写入可以绕过文件版本检查；Lead 必须协调 owner 并检查最终 diff。
 - **扁平且不可变的 roster**——只有 Lead 可以创建直接 teammate；不支持嵌套 Team、重命名、删除或名字复用。
-- **权限状态有两个归属**——决定后续创建的 roster 文档与 `rePolicyMember` 写入的在线成员会话彼此独立；会话不在线的成员无法切换，写入其中一处也绝不会更新另一处。
 - **不会自动释放 owner**——成员不活动、interrupt、进程退出与工作失败都不会释放任务 owner。
 - **mailbox 不保证跨进程 exactly-once**——不支持多个 harness 进程并发操作同一 Team。
 

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-experimental-agent-team` turns one coding session into a small working team: the session's agent becomes the Lead, creates named teammates for delegated work, exchanges durable messages with them, tracks shared tasks on a common board, and switches a live teammate's permission preset. Messages and task state survive crashes and restarts, so an offline teammate receives its queued messages when it resumes. It provides no tools; mount the sibling `dsh-experimental-tool-agent-team` so the model can create teammates, message them, and use the task board. It is experimental, carries no stability promise, and needs durable session storage to activate.
+`dsh-experimental-agent-team` turns one coding session into a small working team: the session's agent becomes the Lead, creates named teammates for delegated work, exchanges durable messages with them, and tracks shared tasks on a common board. Messages and task state survive crashes and restarts, so an offline teammate receives its queued messages when it resumes. It provides no tools; mount the sibling `dsh-experimental-tool-agent-team` so the model can create teammates, message them, and use the task board. It is experimental, carries no stability promise, and needs durable session storage to activate.
 
 ## Table of Contents
 
@@ -62,11 +62,7 @@ Ask the Lead to create a teammate: give it a unique lowercase name such as `revi
 
 The roster shows every member with its role (`lead` or `teammate`) and current status: `running`, `inactive` (no turn is executing, whether loaded or stored), `provisioning`, or `failed`. A member that is not loaded receives its messages when it wakes. The roster reports a member's model only while that member is loaded, because a teammate may run on a route of its own and the Lead's model is not its fallback.
 
-Only the Lead can create teammates, interrupt them, or switch a live member's permission preset.
-
-### Switching a teammate's permission preset
-
-The Lead can switch a live teammate's permission preset at runtime through `agentTeams.rePolicyMember`: the call writes the preset's sandbox mode and approval policy to that teammate's own Session through the permission-preset service, so it never injects a user message into the teammate's conversation. Authority is resolved inside the call — only the Team Lead may switch, and the target must be a roster member of that Lead's own Team with a live Session. A caller that is not the Lead, a target that is not a roster member, a target with no live Session, a deployment with no permission-preset service, and an unknown preset are all rejected before any write. The switch changes that member's live Session only; the roster document that governs how a member is created is untouched.
+Only the Lead can create teammates or interrupt them.
 
 ### Messages between teammates
 
@@ -108,7 +104,7 @@ The service is built on one separation and three commitments:
 
 - **Durable log, derived state.** The Lead Session log is the single source of truth; roster, mailbox, and task state are replayed from it on every read.
 - **Process-local ownership.** All coordination lives in one process; the guarantee is retry plus de-duplication, never cross-process consensus.
-- **Explicit authority.** Every service method takes the exact live calling `Agent`; only the Lead spawns, reassigns, interrupts, or switches a member's permission preset.
+- **Explicit authority.** Every service method takes the exact live calling `Agent`; only the Lead spawns, reassigns, or interrupts.
 - **Bounds that fail loud.** Every limit is a validated deployment value, and exhaustion reports a typed error instead of reusing an id or name.
 
 The [Agent Teams Agent Note](../../../.agents/notes/implemented/feature/2026-08-05-agent-teams.md) owns the identity, mailbox, task, and shared-checkout decisions.
@@ -179,7 +175,7 @@ Read these pages when the package-level contract is not enough. They move from t
 
 The `agentTeam` Session projection publishes the Lead Session's durable roster identities and phases, member errors, non-deleted task views, and any `failure` beside the last valid state. Its `apply` replaces only the touched collection; mailbox-only changes retain the client view reference and produce no frame. The [subsystem reference](../../../docs/subsystems/agent-team.md#web-projection) defines the wire types.
 
-The [Web UI](../client-ui-agent-team/README.md) reads the shared Session projections and overlays activity from Session status, and it switches a live teammate's preset by calling the `rePolicyMember` Remote with the Lead Session as the caller. Task creation and updates belong to Team agents through the service and model tools. The `./client` export supplies browser-safe roster, task, and projection types, and `./remote` carries the generated `agentTeams` Remote contribution the Web UI mounts.
+The [Web UI](../client-ui-agent-team/README.md) reads the shared Session projections and overlays activity from Session status. Task creation and updates belong to Team agents through the service and model tools. The `./client` export supplies browser-safe roster, task, and projection types.
 
 ## Model Experience
 
@@ -191,7 +187,7 @@ Each delivered peer message is a user-role message. A short first text block nam
 
 #### Token effect
 
-Each peer delivery adds the sender prefix plus message content to the target history. Task and roster mutations add no model tokens; their model-facing representation belongs to `@deepseek-ai/dsh-experimental-tool-agent-team` results. A permission-preset switch writes policy to the member's Session without injecting a user message, so it adds no model tokens either.
+Each peer delivery adds the sender prefix plus message content to the target history. Task and roster mutations add no model tokens; their model-facing representation belongs to `@deepseek-ai/dsh-experimental-tool-agent-team` results.
 
 #### KV Cache effect
 
@@ -209,7 +205,6 @@ These limits describe what a team cannot do yet or what needs special operationa
 - **One process and one shared checkout** — members share cwd and observe edits immediately; this package provides no worktree, remote member, merge, or filesystem lock.
 - **Advisory write scopes** — Bash, formatters, code generators, and direct external writers can bypass filesystem version checks; Leads must coordinate ownership and review the final diff.
 - **Flat immutable roster** — only the Lead creates direct teammates; there is no nested Team, rename, deletion, or name reuse.
-- **Permission state has two homes** — the roster document that governs future creations and the live member Session that `rePolicyMember` writes are separate; a member whose Session is not live cannot be switched, and writing one home never updates the other.
 - **No automatic ownership release** — inactivity, interruption, process exit, and failed work do not release a task owner.
 - **Mailbox is not cross-process exactly-once** — concurrent harness processes over one Team are unsupported.
 
