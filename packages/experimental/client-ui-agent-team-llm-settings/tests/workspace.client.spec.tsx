@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
-/** The workspace layer of the card: scope switching, the team document read and write, and member rows. */
+/**
+ * The workspace layer of the card: the Workspace picker the sidebar feeds, the
+ * team document read and write, and the member rows of the selected Workspace.
+ */
 
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -13,11 +16,19 @@ import {
 } from '../src/client/agent-team-llm-card-controller.ts'
 import type { AgentTeamLlmTeamDocument, AgentTeamLlmTeamDocuments } from '../src/client/team-document.ts'
 import { en } from '../src/client/locales.ts'
+import { workspaceRow, workspaceSource, type ScriptedWorkspaces } from './workspace-source.client.ts'
 
 afterEach(cleanup)
 
-/** The Session whose workspace root the Host resolves for the workspace layer. */
+/** The Session the main view retains, which decides the default Workspace. */
 const SESSION = SessionId('session-1')
+
+/** The Workspace the sidebar lists first, accounting for {@link SESSION}. */
+const ALPHA = workspaceRow('ws-alpha', 'alpha', '/projects/alpha', [SESSION])
+/** A second Workspace the picker can switch to. */
+const BETA = workspaceRow('ws-beta', 'beta', '/projects/beta')
+/** A Workspace the operator adds to the sidebar later. */
+const GAMMA = workspaceRow('ws-gamma', 'gamma', '/projects/gamma')
 
 const t = (key: keyof typeof en) => en[key]
 
@@ -48,28 +59,23 @@ function documents(options: {
     ...args: Parameters<AgentTeamLlmTeamDocuments['readTeamDocument']>
   ) => ReturnType<AgentTeamLlmTeamDocuments['readTeamDocument']>
   save?: () => ReturnType<AgentTeamLlmTeamDocuments['saveTeamDocument']>
-  candidates?: () => ReturnType<AgentTeamLlmTeamDocuments['listWorkspaceCandidates']>
 } = {}) {
   const readTeamDocument = vi.fn(options.read ?? (() => Promise.resolve({
     ok: true as const,
-    value: { path: '/project/.dsh/team.json', document: TEAM_DOCUMENT },
+    value: { path: '/projects/alpha/.dsh/team.json', document: TEAM_DOCUMENT },
   })))
   const saveTeamDocument = vi.fn(options.save ?? (() => Promise.resolve({
-    ok: true as const, value: { path: '/project/.dsh/team.json' },
-  })))
-  const listWorkspaceCandidates = vi.fn(options.candidates ?? (() => Promise.resolve({
-    ok: true as const, value: [] as const,
+    ok: true as const, value: { path: '/projects/alpha/.dsh/team.json' },
   })))
   const listMemberPermissionPresets = vi.fn(() => Promise.resolve({
     ok: true as const, value: { presets: [], custom: { name: 'custom', label: 'custom' } },
   }))
   return {
     slice: {
-      readTeamDocument, saveTeamDocument, listWorkspaceCandidates, listMemberPermissionPresets,
+      readTeamDocument, saveTeamDocument, listMemberPermissionPresets,
     } satisfies AgentTeamLlmTeamDocuments,
     readTeamDocument,
     saveTeamDocument,
-    listWorkspaceCandidates,
     listMemberPermissionPresets,
   }
 }
@@ -79,24 +85,37 @@ const CATALOG = { remote: { session: { modelCatalog: () => Promise.resolve({
   value: { groups: [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast' }] }], failures: [] },
 }) } } }
 
-/** A ready global section, the workspace Remote, and the controller bound to both. */
+/** A ready global section, the workspace Remote, the sidebar, and the controller bound to all three. */
 async function bench(options: {
   documents?: AgentTeamLlmTeamDocuments
   session?: SessionId | undefined
+  workspaces?: ScriptedWorkspaces
 } = {}) {
   const host = stubConfigForm<AgentTeamLlmSettings>()
   host.publish({ status: 'ready', writable: true, revision: 1, value: GLOBAL, user: {} })
+  const workspaces = options.workspaces ?? workspaceSource([ALPHA, BETA])
   const controller = new AgentTeamLlmCardController(
     host.scope,
     CATALOG as never,
     options.documents ?? documents().slice,
     () => ('session' in options ? options.session : SESSION),
+    workspaces,
   )
   const face = controller.inject()
   const state = () => face.hooks.agentTeamLlmCard.getSnapshot()
   await vi.waitFor(() => { expect(state().catalogStatus).toBe('ready') })
-  return { host, controller, face, state }
+  return { host, controller, face, state, workspaces }
 }
+
+/** A Remote answer the test settles by hand, for the races the controller guards. */
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((settle) => { resolve = settle })
+  return { promise, resolve }
+}
+
+type ReadAnswer = Awaited<ReturnType<AgentTeamLlmTeamDocuments['readTeamDocument']>>
+type WriteAnswer = Awaited<ReturnType<AgentTeamLlmTeamDocuments['saveTeamDocument']>>
 
 describe('AgentTeamLlmCardController workspace layer', () => {
   it('reads the project document on mount and switches to it as its own layer', async () => {
@@ -104,7 +123,8 @@ describe('AgentTeamLlmCardController workspace layer', () => {
     const { face, state } = await bench({ documents: remote.slice })
 
     await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
-    expect(remote.readTeamDocument).toHaveBeenCalledWith(SESSION, expect.any(AbortSignal))
+    expect(remote.readTeamDocument).toHaveBeenCalledWith(ALPHA.workspaceId, expect.any(AbortSignal))
+    expect(state().workspace.workspaceId).toBe(ALPHA.workspaceId)
     expect(state().scope).toBe('global')
 
     face.setScope('workspace')
@@ -113,7 +133,20 @@ describe('AgentTeamLlmCardController workspace layer', () => {
     expect(state().allowed.map(candidate => candidate.key)).toEqual(['alpha\0fast'])
     expect(state().members.map(member => member.name)).toEqual(['scout', 'writer'])
     expect(state().members[1]).toMatchObject({ key: '', problems: [] })
-    expect(state().workspace.path).toBe('/project/.dsh/team.json')
+    expect(state().workspace.path).toBe('/projects/alpha/.dsh/team.json')
+  })
+
+  it('offers the Workspaces the sidebar lists, in its order', async () => {
+    const { state } = await bench({ workspaces: workspaceSource([BETA, ALPHA]) })
+
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+    expect(state().workspace.candidates).toEqual([
+      { workspaceId: BETA.workspaceId, title: 'beta', path: '/projects/beta' },
+      // The live Session is what the operator is looking at, so the row
+      // accounting for it is the default even in the sidebar's second position.
+      { workspaceId: ALPHA.workspaceId, title: 'alpha', path: '/projects/alpha' },
+    ])
+    expect(state().workspace.workspaceId).toBe(ALPHA.workspaceId)
   })
 
   it('keeps one layer\'s staged rows out of the other', async () => {
@@ -131,7 +164,7 @@ describe('AgentTeamLlmCardController workspace layer', () => {
     expect(state().members[0]?.name).toBe('scout-2')
   })
 
-  it('disables the workspace layer when no project root backs the session', async () => {
+  it('disables the workspace layer when the Host answers no project root', async () => {
     const remote = documents({
       read: () => Promise.resolve({ ok: true as const, value: { path: null, document: null } }),
     })
@@ -145,13 +178,117 @@ describe('AgentTeamLlmCardController workspace layer', () => {
     expect(state().workspace.reason).toBe('noProjectRoot')
   })
 
-  it('disables the workspace layer while no session project is open', async () => {
+  it('treats a project that stores no document as an empty one', async () => {
+    const remote = documents({
+      read: () => Promise.resolve({
+        ok: true as const,
+        value: { path: '/projects/alpha/.dsh/team.json', document: null },
+      }),
+    })
+    const { face, state } = await bench({ documents: remote.slice })
+
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+    face.setScope('workspace')
+
+    expect(state()).toMatchObject({ scope: 'workspace', enabled: false, members: [], dirty: false })
+    expect(state().workspace.path).toBe('/projects/alpha/.dsh/team.json')
+  })
+
+  it('shows a Workspace the operator adds to the sidebar without asking the Host', async () => {
     const remote = documents()
-    const { state } = await bench({ documents: remote.slice, session: undefined })
+    const workspaces = workspaceSource([ALPHA])
+    const { state } = await bench({ documents: remote.slice, workspaces })
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+
+    workspaces.set([ALPHA, GAMMA])
+    workspaces.notify()
+
+    // The acceptance path: a Workspace added in the sidebar reaches the card as
+    // client state, with no Host request behind it.
+    expect(state().workspace.candidates.map(candidate => candidate.workspaceId))
+      .toEqual([ALPHA.workspaceId, GAMMA.workspaceId])
+    expect(state().workspace.candidates[1]).toEqual({
+      workspaceId: GAMMA.workspaceId, title: 'gamma', path: '/projects/gamma',
+    })
+    // The default did not move, so the card keeps the document it already read.
+    expect(remote.readTeamDocument).toHaveBeenCalledOnce()
+  })
+
+  it('re-reads the document when the sidebar\'s new first row takes over the default', async () => {
+    const remote = documents({
+      read: workspaceId => Promise.resolve({
+        ok: true as const,
+        value: {
+          path: `${String(workspaceId)}/.dsh/team.json`,
+          document: { version: 1 as const, members: [{ name: 'owner', description: `owns ${String(workspaceId)}` }] },
+        },
+      }),
+    })
+    const workspaces = workspaceSource([ALPHA])
+    const { state } = await bench({ documents: remote.slice, session: undefined, workspaces })
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+    expect(state().workspace.workspaceId).toBe(ALPHA.workspaceId)
+
+    workspaces.set([GAMMA, ALPHA])
+    workspaces.notify()
+
+    await vi.waitFor(() => { expect(state().workspace.workspaceId).toBe(GAMMA.workspaceId) })
+    expect(remote.readTeamDocument).toHaveBeenLastCalledWith(GAMMA.workspaceId, expect.any(AbortSignal))
+    expect(state().workspace.path).toBe(`${String(GAMMA.workspaceId)}/.dsh/team.json`)
+  })
+
+  it('drops a selected Workspace the sidebar removes and falls back to the default', async () => {
+    const remote = documents({
+      read: workspaceId => Promise.resolve({
+        ok: true as const,
+        value: {
+          path: `${String(workspaceId)}/.dsh/team.json`,
+          document: { version: 1 as const, members: [{ name: 'owner', description: `owns ${String(workspaceId)}` }] },
+        },
+      }),
+    })
+    const workspaces = workspaceSource([ALPHA, BETA])
+    const { face, state } = await bench({ documents: remote.slice, session: undefined, workspaces })
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+
+    face.setWorkspace(BETA.workspaceId)
+    await vi.waitFor(() => { expect(state().workspace.workspaceId).toBe(BETA.workspaceId) })
+
+    // The sidebar no longer lists the picked row, so the default takes over
+    // instead of resolving a document the Host cannot name.
+    workspaces.set([ALPHA])
+    workspaces.notify()
+
+    await vi.waitFor(() => { expect(state().workspace.workspaceId).toBe(ALPHA.workspaceId) })
+    expect(state().workspace.candidates.map(candidate => candidate.workspaceId)).toEqual([ALPHA.workspaceId])
+    expect(remote.readTeamDocument).toHaveBeenLastCalledWith(ALPHA.workspaceId, expect.any(AbortSignal))
+  })
+
+  it('reports an empty sidebar as no Workspace, not as a failure', async () => {
+    const remote = documents()
+    const { state } = await bench({ documents: remote.slice, workspaces: workspaceSource([]) })
 
     await vi.waitFor(() => { expect(state().workspace.status).toBe('unavailable') })
-    expect(state().workspace.reason).toBe('noSession')
+    expect(state().workspace.reason).toBe('noWorkspace')
+    expect(state().workspace.candidates).toEqual([])
+    expect(state().workspace.error).toBeUndefined()
     expect(remote.readTeamDocument).not.toHaveBeenCalled()
+  })
+
+  it('waits for the sidebar projection before calling an empty list empty', async () => {
+    const remote = documents()
+    const workspaces = workspaceSource([], 'pending')
+    const { state } = await bench({ documents: remote.slice, workspaces })
+
+    // An unanswered projection is not an empty sidebar: the list may still arrive.
+    expect(state().workspace).toMatchObject({ status: 'loading', reason: undefined })
+    expect(remote.readTeamDocument).not.toHaveBeenCalled()
+
+    workspaces.set([ALPHA])
+    workspaces.notify()
+
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+    expect(remote.readTeamDocument).toHaveBeenCalledWith(ALPHA.workspaceId, expect.any(AbortSignal))
   })
 
   it('adds, edits, and removes member rows', async () => {
@@ -189,7 +326,7 @@ describe('AgentTeamLlmCardController workspace layer', () => {
       read: () => Promise.resolve({
         ok: true as const,
         value: {
-          path: '/project/.dsh/team.json',
+          path: '/projects/alpha/.dsh/team.json',
           document: {
             version: 1,
             members: [
@@ -250,7 +387,7 @@ describe('AgentTeamLlmCardController workspace layer', () => {
     await vi.waitFor(() => { expect(remote.saveTeamDocument).toHaveBeenCalledOnce() })
     // The overlay writes only what the project document already declared or the
     // draft moved away from what it inherits; everything else keeps inheriting.
-    expect(remote.saveTeamDocument).toHaveBeenCalledWith(SESSION, {
+    expect(remote.saveTeamDocument).toHaveBeenCalledWith(ALPHA.workspaceId, {
       version: 1,
       enabled: true,
       allowedRoutes: [{ provider: 'alpha', model: 'fast' }],
@@ -281,7 +418,7 @@ describe('AgentTeamLlmCardController workspace layer', () => {
 
     remote.readTeamDocument.mockResolvedValueOnce({
       ok: true as const,
-      value: { path: '/project/.dsh/team.json', document: TEAM_DOCUMENT },
+      value: { path: '/projects/alpha/.dsh/team.json', document: TEAM_DOCUMENT },
     })
     face.retryWorkspace()
 
@@ -307,7 +444,7 @@ describe('AgentTeamLlmCardController workspace layer', () => {
     expect(state().workspace.error).toBe('the document has 9 members, 8 is the cap')
     expect(state().members[1]?.name).toBe('reviewer')
 
-    remote.saveTeamDocument.mockResolvedValueOnce({ ok: true as const, value: { path: '/project/.dsh/team.json' } })
+    remote.saveTeamDocument.mockResolvedValueOnce({ ok: true as const, value: { path: '/projects/alpha/.dsh/team.json' } })
     face.save()
 
     await vi.waitFor(() => { expect(state().failed).toBe(false) })
@@ -353,6 +490,182 @@ describe('AgentTeamLlmCardController workspace layer', () => {
     await Promise.resolve()
     expect(state().members).toHaveLength(2)
   })
+
+  it('ignores a sidebar notification after the card is disposed', async () => {
+    const remote = documents()
+    const workspaces = workspaceSource([ALPHA])
+    const { controller, state } = await bench({ documents: remote.slice, workspaces })
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+
+    controller.dispose()
+    workspaces.set([GAMMA])
+    workspaces.notify()
+
+    // The disposed card observes neither the sidebar nor the Host, so nothing
+    // republishes the row the operator just added.
+    expect(state().workspace.candidates.map(candidate => candidate.workspaceId)).toEqual([ALPHA.workspaceId])
+    expect(remote.readTeamDocument).toHaveBeenCalledOnce()
+  })
+
+  it('ignores a notification round a teardown already overtook', async () => {
+    const remote = documents()
+    const workspaces = workspaceSource([ALPHA])
+    let tearDownCard = (): void => {}
+    // A sibling consumer of the same projection, registered before the card the
+    // way the sidebar's own view is. The projection notifies a copied listener
+    // round, so a listener that disposes the card mid-round still leaves the
+    // card's own call queued behind it.
+    workspaces.subscribe(() => { tearDownCard() })
+    const rest = await bench({ documents: remote.slice, workspaces })
+    tearDownCard = () => { rest.controller.dispose() }
+    await vi.waitFor(() => { expect(rest.state().workspace.status).toBe('ready') })
+
+    workspaces.set([GAMMA])
+    workspaces.notify()
+
+    // The call arrives after teardown, so it must not read, republish, or
+    // resolve anything for a card that is gone.
+    expect(rest.state().workspace.candidates.map(candidate => candidate.workspaceId)).toEqual([ALPHA.workspaceId])
+    expect(remote.readTeamDocument).toHaveBeenCalledOnce()
+  })
+})
+
+describe('AgentTeamLlmCardController workspace selection', () => {
+  /** A document read answered per Workspace identity, so a switch is observable. */
+  function perWorkspaceDocuments() {
+    return documents({
+      read: workspaceId => Promise.resolve({
+        ok: true as const,
+        value: {
+          path: `${String(workspaceId)}/.dsh/team.json`,
+          document: { version: 1 as const, members: [{ name: 'owner', description: `owns ${String(workspaceId)}` }] },
+        },
+      }),
+    })
+  }
+
+  it('loads the picked Workspace\'s own document rather than the default\'s', async () => {
+    const remote = perWorkspaceDocuments()
+    const { face, state } = await bench({ documents: remote.slice, session: undefined })
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+    face.setScope('workspace')
+    expect(state().members.map(member => member.description)).toEqual([`owns ${ALPHA.workspaceId}`])
+
+    face.setWorkspace(BETA.workspaceId)
+
+    await vi.waitFor(() => {
+      expect(state().members.map(member => member.description)).toEqual([`owns ${BETA.workspaceId}`])
+    })
+    expect(state().workspace.workspaceId).toBe(BETA.workspaceId)
+    expect(state().workspace.path).toBe(`${String(BETA.workspaceId)}/.dsh/team.json`)
+    expect(remote.readTeamDocument).toHaveBeenLastCalledWith(BETA.workspaceId, expect.any(AbortSignal))
+  })
+
+  it('drops the staged workspace draft when the Workspace switches', async () => {
+    const remote = perWorkspaceDocuments()
+    const { face, state } = await bench({ documents: remote.slice, session: undefined })
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+    face.setScope('workspace')
+    face.setMemberName(0, 'edited-in-alpha')
+    expect(state().members[0]?.name).toBe('edited-in-alpha')
+    expect(state().dirty).toBe(true)
+
+    face.setWorkspace(BETA.workspaceId)
+
+    // The staged edit belonged to alpha's file; carrying it into beta's document
+    // would write one project's draft over another project's file.
+    await vi.waitFor(() => { expect(state().workspace.workspaceId).toBe(BETA.workspaceId) })
+    expect(state().members.map(member => member.name)).toEqual(['owner'])
+    expect(state().dirty).toBe(false)
+  })
+
+  it('keeps the picked Workspace while the sidebar republishes its rows', async () => {
+    const remote = perWorkspaceDocuments()
+    const workspaces = workspaceSource([ALPHA, BETA])
+    const { face, state } = await bench({ documents: remote.slice, session: undefined, workspaces })
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+
+    face.setWorkspace(BETA.workspaceId)
+    await vi.waitFor(() => { expect(state().workspace.workspaceId).toBe(BETA.workspaceId) })
+
+    // An unrelated sidebar change: the picked row is still listed, so the read
+    // that already answered for it stands.
+    workspaces.set([ALPHA, BETA, GAMMA])
+    workspaces.notify()
+
+    expect(state().workspace.workspaceId).toBe(BETA.workspaceId)
+    expect(remote.readTeamDocument).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('AgentTeamLlmCardController workspace races', () => {
+  it('ignores a pick while the workspace document is still being read', async () => {
+    const read = deferred<ReadAnswer>()
+    const remote = documents()
+    remote.readTeamDocument.mockImplementation(() => read.promise)
+    const { face, state } = await bench({ documents: remote.slice, session: SESSION })
+
+    await vi.waitFor(() => { expect(remote.readTeamDocument).toHaveBeenCalledOnce() })
+    face.setWorkspace(BETA.workspaceId)
+    // The read already crossing the wire answers for the Workspace it started on.
+    face.retryWorkspace()
+
+    expect(remote.readTeamDocument).toHaveBeenCalledOnce()
+    expect(state().workspace.workspaceId).toBe(ALPHA.workspaceId)
+
+    read.resolve({ ok: true as const, value: { path: '/projects/alpha/.dsh/team.json', document: TEAM_DOCUMENT } })
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+  })
+
+  it('ignores a pick while a save is in flight', async () => {
+    const write = deferred<WriteAnswer>()
+    const remote = documents()
+    remote.saveTeamDocument.mockImplementation(() => write.promise)
+    const { face, state } = await bench({ documents: remote.slice })
+
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+    face.setScope('workspace')
+    face.setMemberName(1, 'reviewer')
+    face.save()
+    await vi.waitFor(() => { expect(state().saving).toBe(true) })
+
+    face.setWorkspace(BETA.workspaceId)
+    expect(remote.readTeamDocument).toHaveBeenCalledTimes(1)
+
+    write.resolve({ ok: true as const, value: { path: '/projects/alpha/.dsh/team.json' } })
+    await vi.waitFor(() => { expect(state().saving).toBe(false) })
+  })
+
+  it('ignores a pick after the controller is disposed', async () => {
+    const remote = documents()
+    const { controller, state } = await bench({ documents: remote.slice })
+
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+    controller.dispose()
+    controller.inject().setWorkspace(BETA.workspaceId)
+
+    expect(remote.readTeamDocument).toHaveBeenCalledOnce()
+  })
+
+  it('drops a document read the connection generation already replaced', async () => {
+    const first = deferred<ReadAnswer>()
+    const remote = documents()
+    remote.readTeamDocument.mockReturnValueOnce(first.promise)
+    const { controller, state } = await bench({ documents: remote.slice })
+    await vi.waitFor(() => { expect(remote.readTeamDocument).toHaveBeenCalledOnce() })
+
+    controller.resetConnection()
+    await vi.waitFor(() => { expect(remote.readTeamDocument).toHaveBeenCalledTimes(2) })
+
+    // The first answer belongs to the connection that is gone, so it must not
+    // install a path or a document the reconnect just dropped.
+    first.resolve({ ok: true as const, value: { path: '/stale/.dsh/team.json', document: TEAM_DOCUMENT } })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+    expect(state().workspace.path).toBe('/projects/alpha/.dsh/team.json')
+  })
 })
 
 const shell: SettingsFormShell = {
@@ -364,7 +677,10 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
   const store = createSnapshotStore<AgentTeamLlmCardState>({
     ...shell,
     scope: 'global',
-    workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined, reason: undefined, candidatesStatus: 'ready', candidates: [], sessionId: undefined },
+    workspace: {
+      status: 'ready', path: '/projects/alpha/.dsh/team.json', error: undefined, reason: undefined,
+      candidates: [], workspaceId: undefined,
+    },
     enabled: false,
     candidates: [],
     allowed: [],
@@ -383,7 +699,7 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
     setMemberContext: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(), retryWorkspace: vi.fn(),
     toggleEnabled: vi.fn(), toggleRoute: vi.fn(), setDefaultRoute: vi.fn(), retryCatalog: vi.fn(),
     addRole: vi.fn(), removeRole: vi.fn(), setRoleName: vi.fn(), setRoleRoute: vi.fn(),
-    setRoleEffort: vi.fn(), setWorkspaceSession: vi.fn(),
+    setRoleEffort: vi.fn(), setWorkspace: vi.fn(),
     save: vi.fn(), discard: vi.fn(),
   }
   const props = {
@@ -397,9 +713,12 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
 }
 
 describe('AgentTeamLlmCard workspace layer', () => {
-  it('disables the workspace tab and explains a session with no project root', () => {
+  it('disables the workspace tab and explains a Workspace with no project root', () => {
     const { actions } = renderCard({
-      workspace: { status: 'unavailable', path: undefined, error: undefined, reason: 'noProjectRoot', candidatesStatus: 'ready', candidates: [], sessionId: undefined },
+      workspace: {
+        status: 'unavailable', path: undefined, error: undefined, reason: 'noProjectRoot',
+        candidates: [], workspaceId: undefined,
+      },
     })
 
     const [global, workspace] = screen.getAllByRole('tab')
@@ -413,7 +732,10 @@ describe('AgentTeamLlmCard workspace layer', () => {
   it('reports a refused read with its Host message and retries it', () => {
     const { actions } = renderCard({
       scope: 'workspace',
-      workspace: { status: 'error', path: undefined, error: 'the document is not valid JSON', reason: undefined, candidatesStatus: 'ready', candidates: [], sessionId: undefined },
+      workspace: {
+        status: 'error', path: undefined, error: 'the document is not valid JSON', reason: undefined,
+        candidates: [], workspaceId: undefined,
+      },
     })
 
     const alert = screen.getByRole('alert')
@@ -431,12 +753,11 @@ describe('AgentTeamLlmCard workspace layer', () => {
       failed: true,
       workspace: {
         status: 'ready',
-        path: '/project/.dsh/team.json',
-        error: '"/project" has no .git ancestor to own a team document',
+        path: '/projects/alpha/.dsh/team.json',
+        error: '"/projects/alpha" has no .git ancestor to own a team document',
         reason: undefined,
-        candidatesStatus: 'ready',
         candidates: [],
-        sessionId: undefined,
+        workspaceId: ALPHA.workspaceId,
       },
     })
 
@@ -450,7 +771,10 @@ describe('AgentTeamLlmCard workspace layer', () => {
   it('keeps a refused read retriable while the document was never read', () => {
     renderCard({
       scope: 'workspace',
-      workspace: { status: 'error', path: undefined, error: 'the document is not valid JSON', reason: undefined, candidatesStatus: 'ready', candidates: [], sessionId: undefined },
+      workspace: {
+        status: 'error', path: undefined, error: 'the document is not valid JSON', reason: undefined,
+        candidates: [], workspaceId: undefined,
+      },
     })
 
     const alert = screen.getByRole('alert')
@@ -479,7 +803,7 @@ describe('AgentTeamLlmCard workspace layer', () => {
       ],
     })
 
-    expect(screen.getByLabelText(en.agentTeamLlmWorkspacePath).textContent).toBe('/project/.dsh/team.json')
+    expect(screen.getByLabelText(en.agentTeamLlmWorkspacePath).textContent).toBe('/projects/alpha/.dsh/team.json')
     const names = screen.getAllByLabelText(en.agentTeamLlmMemberName) as HTMLInputElement[]
     expect(names.map(field => field.value)).toEqual(['scout', 'writer'])
     const descriptions = screen.getAllByLabelText(en.agentTeamLlmMemberDescription) as HTMLInputElement[]
@@ -513,352 +837,12 @@ describe('AgentTeamLlmCard workspace layer', () => {
   })
 })
 
-/** One project the Host offers, in newest-created-first order. */
-const ALPHA = { sessionId: SessionId('session-alpha'), cwd: '/projects/alpha', createdAt: 20 }
-const BETA = { sessionId: SessionId('session-beta'), cwd: '/projects/beta', createdAt: 10 }
-
-/** A document read answered per Session identity, so a switch is observable. */
-function perProjectDocuments() {
-  return documents({
-    read: sessionId => Promise.resolve({
-      ok: true as const,
-      value: {
-        path: `${String(sessionId)}/.dsh/team.json`,
-        document: { version: 1 as const, members: [{ name: 'owner', description: `owns ${String(sessionId)}` }] },
-      },
-    }),
-  })
-}
-
-/** A Remote answer the test settles by hand, for the races the controller guards. */
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((settle) => { resolve = settle })
-  return { promise, resolve }
-}
-
-type CandidateAnswer = Awaited<ReturnType<AgentTeamLlmTeamDocuments['listWorkspaceCandidates']>>
-type ReadAnswer = Awaited<ReturnType<AgentTeamLlmTeamDocuments['readTeamDocument']>>
-type WriteAnswer = Awaited<ReturnType<AgentTeamLlmTeamDocuments['saveTeamDocument']>>
-
-describe('AgentTeamLlmCardController candidate fallback', () => {
-  it('resolves the newest-created candidate when no live session and no selection', async () => {
-    const remote = documents({ candidates: () => Promise.resolve({ ok: true as const, value: [ALPHA, BETA] }) })
-    const { face, state } = await bench({ documents: remote.slice, session: undefined })
-
-    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
-    // No tier above the list resolves, so the first candidate is the subject.
-    expect(remote.readTeamDocument).toHaveBeenCalledWith(ALPHA.sessionId, expect.any(AbortSignal))
-    expect(state().workspace.sessionId).toBe(ALPHA.sessionId)
-    expect(face.hooks.agentTeamLlmCard.getSnapshot().workspace.candidates.map(c => c.sessionId))
-      .toEqual([ALPHA.sessionId, BETA.sessionId])
-  })
-
-  it('never lets a candidate displace a live main-view session', async () => {
-    const remote = documents({ candidates: () => Promise.resolve({ ok: true as const, value: [ALPHA, BETA] }) })
-    const { state } = await bench({ documents: remote.slice, session: SESSION })
-
-    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
-    // The retained session is what the operator is looking at; the picker still
-    // lists the projects, but it must not become the subject of the read.
-    expect(remote.readTeamDocument).toHaveBeenCalledWith(SESSION, expect.any(AbortSignal))
-    expect(remote.readTeamDocument).not.toHaveBeenCalledWith(ALPHA.sessionId, expect.any(AbortSignal))
-    expect(remote.listWorkspaceCandidates).not.toHaveBeenCalled()
-  })
-
-  it('keeps the picked session over the newest candidate', async () => {
-    const remote = documents({ candidates: () => Promise.resolve({ ok: true as const, value: [ALPHA, BETA] }) })
-    const { face, state } = await bench({ documents: remote.slice, session: undefined })
-
-    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
-    expect(state().workspace.sessionId).toBe(ALPHA.sessionId)
-
-    face.setWorkspaceSession(BETA.sessionId)
-
-    await vi.waitFor(() => { expect(state().workspace.sessionId).toBe(BETA.sessionId) })
-    // A selection outranks the list's own order.
-    expect(remote.readTeamDocument).toHaveBeenLastCalledWith(BETA.sessionId, expect.any(AbortSignal))
-  })
-
-  it('loads the picked project\'s own document rather than the first candidate\'s', async () => {
-    const remote = perProjectDocuments()
-    remote.listWorkspaceCandidates.mockImplementation(() =>
-      Promise.resolve({ ok: true as const, value: [ALPHA, BETA] }))
-    const { face, state } = await bench({ documents: remote.slice, session: undefined })
-
-    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
-    face.setScope('workspace')
-    expect(state().members.map(member => member.description)).toEqual([`owns ${ALPHA.sessionId}`])
-
-    face.setWorkspaceSession(BETA.sessionId)
-
-    await vi.waitFor(() => { expect(state().members.map(member => member.description)).toEqual([`owns ${BETA.sessionId}`]) })
-    expect(state().workspace.path).toBe(`${BETA.sessionId}/.dsh/team.json`)
-  })
-
-  it('drops the staged workspace draft when the session switches', async () => {
-    const remote = perProjectDocuments()
-    remote.listWorkspaceCandidates.mockImplementation(() =>
-      Promise.resolve({ ok: true as const, value: [ALPHA, BETA] }))
-    const { face, state } = await bench({ documents: remote.slice, session: undefined })
-
-    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
-    face.setScope('workspace')
-    face.setMemberName(0, 'edited-in-alpha')
-    expect(state().members[0]?.name).toBe('edited-in-alpha')
-    expect(state().dirty).toBe(true)
-
-    face.setWorkspaceSession(BETA.sessionId)
-
-    // The staged edit belonged to alpha's file; carrying it into beta's document
-    // would write one project's draft over another project's file.
-    await vi.waitFor(() => { expect(state().workspace.sessionId).toBe(BETA.sessionId) })
-    expect(state().members.map(member => member.name)).toEqual(['owner'])
-    expect(state().dirty).toBe(false)
-  })
-
-  it('reports an empty candidate list as no session, not as a failure', async () => {
-    const remote = documents({ candidates: () => Promise.resolve({ ok: true as const, value: [] }) })
-    const { state } = await bench({ documents: remote.slice, session: undefined })
-
-    await vi.waitFor(() => { expect(state().workspace.status).toBe('unavailable') })
-    expect(state().workspace.reason).toBe('noSession')
-    expect(state().workspace.error).toBeUndefined()
-    expect(remote.readTeamDocument).not.toHaveBeenCalled()
-  })
-
-  it('reports a refused candidate list as an error carrying its message', async () => {
-    const remote = documents({
-      candidates: () => Promise.resolve({
-        ok: false as const,
-        error: new RemoteError('gateway/internal', 'the session corpus is unavailable', {}),
-      }),
-    })
-    const { state } = await bench({ documents: remote.slice, session: undefined })
-
-    await vi.waitFor(() => { expect(state().workspace.status).toBe('error') })
-    // A transport failure blames the transport, not the absence of a session.
-    expect(state().workspace.reason).toBeUndefined()
-    expect(state().workspace.error).toBe('the session corpus is unavailable')
-  })
-
-  it('forgets a selection the Host no longer offers', async () => {
-    const remote = perProjectDocuments()
-    remote.listWorkspaceCandidates.mockImplementation(() =>
-      Promise.resolve({ ok: true as const, value: [ALPHA, BETA] }))
-    const { controller, face, state } = await bench({ documents: remote.slice, session: undefined })
-
-    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
-    face.setWorkspaceSession(BETA.sessionId)
-    await vi.waitFor(() => { expect(state().workspace.sessionId).toBe(BETA.sessionId) })
-
-    // Only alpha survives the refresh, so beta would resolve a stale document.
-    remote.listWorkspaceCandidates.mockImplementation(() =>
-      Promise.resolve({ ok: true as const, value: [ALPHA] }))
-    controller.resetConnection()
-
-    await vi.waitFor(() => { expect(state().workspace.candidates).toHaveLength(1) })
-    expect(state().workspace.sessionId).toBe(ALPHA.sessionId)
-  })
-})
-
-describe('AgentTeamLlmCardController candidate retry', () => {
-  /** A Host that refuses the candidate list, with the controller settled on that refusal. */
-  async function refusedCandidates() {
-    const remote = documents({
-      candidates: () => Promise.resolve({
-        ok: false as const,
-        error: new RemoteError('gateway/internal', 'the session corpus is unavailable', {}),
-      }),
-    })
-    const rest = await bench({ documents: remote.slice, session: undefined })
-    await vi.waitFor(() => { expect(rest.state().workspace.status).toBe('error') })
-    return { remote, ...rest }
-  }
-
-  it('asks the Host again when a refused candidate list is retried', async () => {
-    const { remote, face, state } = await refusedCandidates()
-    expect(remote.listWorkspaceCandidates).toHaveBeenCalledOnce()
-
-    // The retry crossing the wire is what the published refusal must survive.
-    const answer = deferred<CandidateAnswer>()
-    remote.listWorkspaceCandidates.mockReturnValueOnce(answer.promise)
-    face.retryWorkspace()
-
-    await vi.waitFor(() => { expect(remote.listWorkspaceCandidates).toHaveBeenCalledTimes(2) })
-    expect(state().workspace.candidatesStatus).toBe('loading')
-    expect(state().workspace.status).toBe('error')
-
-    answer.resolve({
-      ok: false as const,
-      error: new RemoteError('gateway/internal', 'the session corpus is unavailable', {}),
-    })
-    await vi.waitFor(() => { expect(state().workspace.candidatesStatus).toBe('error') })
-
-    // A second refusal is still blamed on the transport, never on a missing session.
-    expect(state().workspace.status).toBe('error')
-    expect(state().workspace.error).toBe('the session corpus is unavailable')
-    expect(state().workspace.reason).toBeUndefined()
-    expect(remote.readTeamDocument).not.toHaveBeenCalled()
-  })
-
-  it('offers the answered candidates when a retry succeeds', async () => {
-    const { remote, face, state } = await refusedCandidates()
-
-    remote.listWorkspaceCandidates.mockResolvedValueOnce({ ok: true as const, value: [ALPHA, BETA] })
-    face.retryWorkspace()
-
-    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
-    // These two fields are the picker's render condition (`AgentTeamLlmCard`
-    // renders it only while `workspace.candidates.length > 0`).
-    expect(state().workspace.candidatesStatus).toBe('ready')
-    expect(state().workspace.candidates.map(candidate => candidate.sessionId))
-      .toEqual([ALPHA.sessionId, BETA.sessionId])
-    expect(state().workspace.sessionId).toBe(ALPHA.sessionId)
-    expect(state().workspace.error).toBeUndefined()
-    expect(remote.readTeamDocument).toHaveBeenCalledWith(ALPHA.sessionId, expect.any(AbortSignal))
-  })
-
-  it('does not fan out a parallel request while a retry is in flight', async () => {
-    const { remote, face, state } = await refusedCandidates()
-    expect(remote.listWorkspaceCandidates).toHaveBeenCalledOnce()
-
-    const answer = deferred<CandidateAnswer>()
-    remote.listWorkspaceCandidates.mockReturnValueOnce(answer.promise)
-    face.retryWorkspace()
-    await vi.waitFor(() => { expect(remote.listWorkspaceCandidates).toHaveBeenCalledTimes(2) })
-
-    // The second retry re-enters with the list already in flight, so it must
-    // return without asking the Host for the same list twice.
-    face.retryWorkspace()
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(remote.listWorkspaceCandidates).toHaveBeenCalledTimes(2)
-
-    answer.resolve({ ok: true as const, value: [ALPHA] })
-    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
-    expect(state().workspace.sessionId).toBe(ALPHA.sessionId)
-  })
-})
-
-describe('AgentTeamLlmCardController workspace races', () => {
-  it('drops a candidate list the connection generation already replaced', async () => {
-    const first = deferred<CandidateAnswer>()
-    const second = deferred<CandidateAnswer>()
-    const remote = documents()
-    remote.listWorkspaceCandidates.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
-    const { controller, state } = await bench({ documents: remote.slice, session: undefined })
-
-    await vi.waitFor(() => { expect(remote.listWorkspaceCandidates).toHaveBeenCalledTimes(1) })
-    controller.resetConnection()
-    await vi.waitFor(() => { expect(remote.listWorkspaceCandidates).toHaveBeenCalledTimes(2) })
-
-    // The first answer belongs to the connection that is gone, so it must not
-    // repopulate the list the reconnect just cleared.
-    first.resolve({ ok: true as const, value: [ALPHA] })
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(state().workspace.candidates).toEqual([])
-    expect(remote.readTeamDocument).not.toHaveBeenCalled()
-
-    second.resolve({ ok: true as const, value: [BETA] })
-    await vi.waitFor(() => { expect(state().workspace.sessionId).toBe(BETA.sessionId) })
-  })
-
-  it('forgets a pick that an in-flight candidate list does not offer', async () => {
-    const pending = deferred<CandidateAnswer>()
-    const remote = documents()
-    remote.listWorkspaceCandidates.mockImplementation(() => pending.promise)
-    const { face, state } = await bench({ documents: remote.slice, session: undefined })
-
-    await vi.waitFor(() => { expect(remote.listWorkspaceCandidates).toHaveBeenCalledOnce() })
-    face.setWorkspaceSession(BETA.sessionId)
-
-    // The answer offers only alpha; keeping beta selected would resolve a
-    // document for a project the Host has stopped offering.
-    await vi.waitFor(() => { expect(state().workspace.sessionId).toBe(BETA.sessionId) })
-    pending.resolve({ ok: true as const, value: [ALPHA] })
-    await vi.waitFor(() => { expect(state().workspace.candidates).toHaveLength(1) })
-
-    face.retryWorkspace()
-
-    await vi.waitFor(() => { expect(state().workspace.sessionId).toBe(ALPHA.sessionId) })
-  })
-
-  it('ignores a pick while the workspace document is still being read', async () => {
-    const read = deferred<ReadAnswer>()
-    const remote = documents()
-    remote.readTeamDocument.mockImplementation(() => read.promise)
-    const { face, state } = await bench({ documents: remote.slice, session: SESSION })
-
-    await vi.waitFor(() => { expect(remote.readTeamDocument).toHaveBeenCalledOnce() })
-    face.setWorkspaceSession(ALPHA.sessionId)
-
-    // The read already crossing the wire answers for the session it started on.
-    expect(remote.readTeamDocument).toHaveBeenCalledOnce()
-    expect(state().workspace.sessionId).toBe(SESSION)
-
-    read.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json', document: TEAM_DOCUMENT } })
-    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
-  })
-
-  it('ignores a pick while a save is in flight', async () => {
-    const write = deferred<WriteAnswer>()
-    const remote = documents()
-    remote.saveTeamDocument.mockImplementation(() => write.promise)
-    const { face, state } = await bench({ documents: remote.slice })
-
-    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
-    face.setScope('workspace')
-    face.setMemberName(1, 'reviewer')
-    face.save()
-    await vi.waitFor(() => { expect(state().saving).toBe(true) })
-
-    face.setWorkspaceSession(ALPHA.sessionId)
-    expect(remote.readTeamDocument).toHaveBeenCalledTimes(1)
-
-    write.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } })
-    await vi.waitFor(() => { expect(state().saving).toBe(false) })
-  })
-
-  it('ignores a pick after the controller is disposed', async () => {
-    const remote = documents()
-    const { controller, state } = await bench({ documents: remote.slice })
-
-    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
-    controller.dispose()
-    controller.inject().setWorkspaceSession(ALPHA.sessionId)
-
-    expect(remote.readTeamDocument).toHaveBeenCalledOnce()
-  })
-})
-
-describe('AgentTeamLlmCardController live session precedence', () => {
-  it('resolves the live main-view session even after the user picked another project', async () => {
-    const remote = perProjectDocuments()
-    remote.listWorkspaceCandidates.mockImplementation(() =>
-      Promise.resolve({ ok: true as const, value: [ALPHA, BETA] }))
-    // The settings page itself retains nothing, but the browser table does while
-    // the operator is looking at a session; the card follows that table first.
-    const { face, state } = await bench({ documents: remote.slice, session: SESSION })
-
-    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
-    expect(state().workspace.sessionId).toBe(SESSION)
-
-    face.setWorkspaceSession(BETA.sessionId)
-
-    // The retained session is what the operator is actually looking at, so it
-    // outranks even an explicit pick until it is released.
-    await vi.waitFor(() => { expect(remote.readTeamDocument).toHaveBeenCalledTimes(2) })
-    expect(state().workspace.sessionId).toBe(SESSION)
-    expect(remote.readTeamDocument).toHaveBeenLastCalledWith(SESSION, expect.any(AbortSignal))
-  })
-})
-
-const PICKER_ALPHA = { sessionId: SessionId('session-alpha'), cwd: '/projects/alpha', createdAt: 20 }
-const PICKER_WINDOWS = { sessionId: SessionId('session-win'), cwd: 'C:\\work\\beta', createdAt: 10 }
-
-/** The project picker rendered for one snapshot. */
+/** The Workspaces the picker renders for one snapshot. */
+const PICKER_ALPHA = workspaceRow('ws-alpha', 'alpha', '/projects/alpha')
+const PICKER_WINDOWS = workspaceRow('ws-beta', 'beta', 'C:\\work\\beta')
+const PICKER_DEFAULT = workspaceRow('ws-default', 'default-workspace', '/Users/dev/Documents/deepseek-harness')
+
+/** The Workspace picker rendered for one snapshot. */
 function renderPicker(state: Partial<AgentTeamLlmCardState> = {}) {
   return renderCard({
     scope: 'workspace',
@@ -867,103 +851,113 @@ function renderPicker(state: Partial<AgentTeamLlmCardState> = {}) {
       path: '/projects/alpha/.dsh/team.json',
       error: undefined,
       reason: undefined,
-      candidatesStatus: 'ready',
       candidates: [PICKER_ALPHA, PICKER_WINDOWS],
-      sessionId: PICKER_ALPHA.sessionId,
+      workspaceId: PICKER_ALPHA.workspaceId,
     },
     ...state,
   })
 }
 
-describe('AgentTeamLlmCard project picker', () => {
-  it('labels each project by the last segment of its working directory', () => {
+describe('AgentTeamLlmCard workspace picker', () => {
+  it('renders one option per Workspace with its sidebar title and path', () => {
     renderPicker()
 
-    const picker = screen.getByLabelText(en.agentTeamLlmWorkspaceSession)
+    const picker = screen.getByLabelText(en.agentTeamLlmWorkspacePicker) as HTMLSelectElement
     const options = within(picker).getAllByRole('option') as HTMLOptionElement[]
+    expect(picker.value).toBe(PICKER_ALPHA.workspaceId)
+    expect(options.map(option => option.value)).toEqual([PICKER_ALPHA.workspaceId, PICKER_WINDOWS.workspaceId])
     expect(options.map(option => option.textContent)).toEqual(['alpha', 'beta'])
-    // The full path stays reachable as the tooltip, because the last segment
-    // alone cannot tell two checkouts of the same repository apart.
+    // The full path stays reachable as the tooltip, because two Workspaces of
+    // the same directory name are otherwise indistinguishable.
     expect(options.map(option => option.title)).toEqual(['/projects/alpha', 'C:\\work\\beta'])
   })
 
-  it('stages the chosen project identity rather than the raw option string', () => {
+  it('stages the chosen Workspace identity rather than the raw option string', () => {
     const { actions } = renderPicker()
 
-    fireEvent.change(screen.getByLabelText(en.agentTeamLlmWorkspaceSession), {
-      target: { value: PICKER_WINDOWS.sessionId },
+    fireEvent.change(screen.getByLabelText(en.agentTeamLlmWorkspacePicker), {
+      target: { value: PICKER_WINDOWS.workspaceId },
     })
 
-    expect(actions.setWorkspaceSession).toHaveBeenCalledWith(PICKER_WINDOWS.sessionId)
+    expect(actions.setWorkspace).toHaveBeenCalledWith(PICKER_WINDOWS.workspaceId)
   })
 
-  it('keeps a working directory that has no final segment', () => {
-    const root = { sessionId: SessionId('session-root'), cwd: '/', createdAt: 30 }
+  it('labels the first-use Workspace the way the sidebar does', () => {
     renderPicker({
       workspace: {
-        status: 'ready', path: '/.dsh/team.json', error: undefined, reason: undefined,
-        candidatesStatus: 'ready', candidates: [root], sessionId: root.sessionId,
+        status: 'ready', path: '/projects/alpha/.dsh/team.json', error: undefined, reason: undefined,
+        candidates: [PICKER_DEFAULT, PICKER_ALPHA], workspaceId: PICKER_DEFAULT.workspaceId,
       },
     })
 
-    const options = within(screen.getByLabelText(en.agentTeamLlmWorkspaceSession))
+    // The stored title of the first-use Workspace is its directory name; the
+    // sidebar shows the localized default instead, so the picker must too.
+    const options = within(screen.getByLabelText(en.agentTeamLlmWorkspacePicker))
       .getAllByRole('option') as HTMLOptionElement[]
-    // Splitting `/` yields no segment to name the project, so the path itself
-    // is the only label left.
-    expect(options.map(option => option.textContent)).toEqual(['/'])
-    expect(options.map(option => option.title)).toEqual(['/'])
+    expect(options.map(option => option.textContent)).toEqual([en.agentTeamLlmWorkspaceDefault, 'alpha'])
   })
 
-  it('offers the picker before a subject resolves', () => {
+  it('offers the picker before a Workspace resolves', () => {
     const { actions } = renderPicker({
       workspace: {
         status: 'ready', path: '/projects/alpha/.dsh/team.json', error: undefined, reason: undefined,
-        candidatesStatus: 'ready', candidates: [PICKER_ALPHA, PICKER_WINDOWS], sessionId: undefined,
+        candidates: [PICKER_ALPHA, PICKER_WINDOWS], workspaceId: undefined,
       },
     })
 
-    // The list can arrive before a subject resolves; it is still the operator's
-    // to choose from, so no option may be dropped while the selection is empty.
-    const picker = screen.getByLabelText(en.agentTeamLlmWorkspaceSession)
+    // The sidebar's rows can arrive before a default resolves; they are still
+    // the operator's to choose from, so no option may be dropped.
+    const picker = screen.getByLabelText(en.agentTeamLlmWorkspacePicker)
     const options = within(picker).getAllByRole('option') as HTMLOptionElement[]
-    expect(options.map(option => option.value)).toEqual([PICKER_ALPHA.sessionId, PICKER_WINDOWS.sessionId])
+    expect(options.map(option => option.value)).toEqual([PICKER_ALPHA.workspaceId, PICKER_WINDOWS.workspaceId])
 
-    fireEvent.change(picker, { target: { value: PICKER_WINDOWS.sessionId } })
-    expect(actions.setWorkspaceSession).toHaveBeenCalledWith(PICKER_WINDOWS.sessionId)
+    fireEvent.change(picker, { target: { value: PICKER_WINDOWS.workspaceId } })
+    expect(actions.setWorkspace).toHaveBeenCalledWith(PICKER_WINDOWS.workspaceId)
   })
 
-  it('ignores a change that names no offered project', () => {
+  it('ignores a change that names no offered Workspace', () => {
     const { actions } = renderPicker()
 
-    fireEvent.change(screen.getByLabelText(en.agentTeamLlmWorkspaceSession), {
-      target: { value: 'session-nobody-offers' },
+    fireEvent.change(screen.getByLabelText(en.agentTeamLlmWorkspacePicker), {
+      target: { value: 'ws-nobody-offers' },
     })
 
-    // Only an identity the Host minted may be staged, never the raw option string.
-    expect(actions.setWorkspaceSession).not.toHaveBeenCalled()
+    // Only an identity the sidebar published may be staged, never the raw
+    // option string.
+    expect(actions.setWorkspace).not.toHaveBeenCalled()
   })
 
-  it('disables the picker while the layer reads and while a save is in flight', () => {
+  it('disables the picker while the layer reads, while saving, and while read-only', () => {
     const { store } = renderPicker()
-    expect(screen.getByLabelText(en.agentTeamLlmWorkspaceSession)).toHaveProperty('disabled', false)
+    const picker = () => screen.getByLabelText(en.agentTeamLlmWorkspacePicker)
+    expect(picker()).toHaveProperty('disabled', false)
 
     // The store lives outside React, so each write has to be flushed through
     // `act` before the rendered `<select>` reflects it.
     act(() => { store.set({ ...store.getSnapshot(), workspace: { ...store.getSnapshot().workspace, status: 'loading' } }) })
-    expect(screen.getByLabelText(en.agentTeamLlmWorkspaceSession)).toHaveProperty('disabled', true)
+    expect(picker()).toHaveProperty('disabled', true)
 
-    act(() => { store.set({ ...store.getSnapshot(), workspace: { ...store.getSnapshot().workspace, status: 'ready' }, saving: true }) })
-    expect(screen.getByLabelText(en.agentTeamLlmWorkspaceSession)).toHaveProperty('disabled', true)
+    act(() => {
+      store.set({
+        ...store.getSnapshot(),
+        workspace: { ...store.getSnapshot().workspace, status: 'ready' },
+        saving: true,
+      })
+    })
+    expect(picker()).toHaveProperty('disabled', true)
+
+    act(() => { store.set({ ...store.getSnapshot(), saving: false, writable: false }) })
+    expect(picker()).toHaveProperty('disabled', true)
   })
 
-  it('offers no picker while the Host has named no project', () => {
+  it('offers no picker while the sidebar lists no Workspace', () => {
     renderPicker({
       workspace: {
         status: 'ready', path: '/projects/alpha/.dsh/team.json', error: undefined, reason: undefined,
-        candidatesStatus: 'ready', candidates: [], sessionId: undefined,
+        candidates: [], workspaceId: undefined,
       },
     })
 
-    expect(screen.queryByLabelText(en.agentTeamLlmWorkspaceSession)).toBeNull()
+    expect(screen.queryByLabelText(en.agentTeamLlmWorkspacePicker)).toBeNull()
   })
 })

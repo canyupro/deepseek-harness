@@ -3,9 +3,12 @@
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only: the ctx.remote Context merge and the forwarded-event key face.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
-// Type-only: the ctx.sessions Context merge naming the Session whose workspace
-// root the Host resolves for the workspace layer.
+// Type-only: the ctx.sessions Context merge naming the Session whose Workspace
+// the workspace layer defaults to.
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+// Type-only: the ctx.workspaces Context merge, the sidebar's Workspace
+// projection this card's picker lists.
+import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: the Plugins page's SlotMap merge (the 'plugins.item' entry).
@@ -44,10 +47,10 @@ function teamDocuments(ctx: Context): AgentTeamLlmTeamDocuments {
 }
 
 /**
- * The Session the operator is looking at, which is what the workspace layer
- * resolves whenever one is held. Nothing else belongs here: the settings page
- * holds no main-view retention, and the card falls back to the sessions the Host
- * offers, which it ranks separately.
+ * The Session the operator is looking at, which decides the Workspace the
+ * workspace layer defaults to whenever one is held. Nothing else belongs here:
+ * the settings page holds no main-view retention, and the card falls back to
+ * the Workspace rows the sidebar publishes.
  * @param ctx - the browser plugin context carrying the Session catalog.
  * @returns a reader for the Session identity, or undefined while no Session is held.
  */
@@ -64,6 +67,7 @@ function registerUi(ctx: Context): void {
     ctx,
     teamDocuments(ctx),
     workspaceSession(ctx),
+    ctx.workspaces.list,
   )
   ctx.effect(() => () => { card.dispose() }, 'client-ui-agent-team-llm-settings: form subscription')
   // The model catalogue is not part of the settings section: adapters come and
@@ -109,7 +113,7 @@ export async function mountAgentTeamLlmSettingsCard(
 ): Promise<() => Promise<void>> {
   const disposeRemote = await ctx.remote.$mount(contribution)
   const ui = ctx.inject(
-    ['remote.agentTeamLlm', 'remote.session', 'configForms', 'locale', 'sessions', 'slots'],
+    ['remote.agentTeamLlm', 'remote.session', 'configForms', 'locale', 'sessions', 'slots', 'workspaces'],
     registerUi,
   )
   try {

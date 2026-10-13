@@ -873,7 +873,6 @@ export type MemberSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-a
 
 ## `@deepseek-ai/dsh-experimental-agent-team-llm-settings`
 
-- `inject`: `sessionQuery`
 - `refs`: `Volatile` (`@deepseek-ai/cordis`)
 - `source`: [`packages/experimental/agent-team-llm-settings/src/index.ts:73`](../packages/experimental/agent-team-llm-settings/src/index.ts)
 

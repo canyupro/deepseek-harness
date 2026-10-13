@@ -44,7 +44,7 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
   const store = createSnapshotStore<AgentTeamLlmCardState>({
     ...shell,
     scope: 'global',
-    workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined, reason: undefined, candidatesStatus: 'ready', candidates: [], sessionId: undefined },
+    workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined, reason: undefined, candidates: [], workspaceId: undefined },
     enabled: true,
     candidates: [],
     allowed: [],
@@ -88,7 +88,7 @@ describe('member row prompt and route fields', () => {
   it('shows the stored prompt on the row', () => {
     renderCard({ members: [member({ prompt: 'Read first.' })] })
 
-    expect((screen.getByLabelText(en.agentTeamLlmMemberPrompt) as HTMLTextAreaElement).value)
+    expect(screen.getByLabelText<HTMLTextAreaElement>(en.agentTeamLlmMemberPrompt).value)
       .toBe('Read first.')
   })
 

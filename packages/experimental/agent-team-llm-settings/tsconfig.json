@@ -18,12 +18,6 @@
       "path": "../../../vendor/cordis"
     },
     {
-      "path": "../../core/session"
-    },
-    {
-      "path": "../../session-query/session-query"
-    },
-    {
       "path": "../../llm/llm"
     },
     {
@@ -33,7 +27,7 @@
       "path": "../../typert/protocol"
     },
     {
-      "path": "../../api/workspace-files/tsconfig.host.json"
+      "path": "../../workspace/workspace"
     },
     {
       "path": "../../interaction/permission-presets"

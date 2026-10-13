@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-把本服务与 `@deepseek-ai/dsh-experimental-agent-team`、`@deepseek-ai/dsh-experimental-tool-agent-team` 一起挂载。它注入 `ctx.sessionQuery` 以响应 `listWorkspaceCandidates`，因此组合里还必须提供一个会话查询服务；缺了它服务会一直处于 pending。`@deepseek-ai/dsh-experimental-agent-team-profile` 已经挂载了它。
+把本服务与 `@deepseek-ai/dsh-experimental-agent-team`、`@deepseek-ai/dsh-experimental-tool-agent-team` 一起挂载。每次读写工作区文档时它都读取 `ctx.get('workspaceRegistry')`，因此没挂载 Workspace 注册表的组合仍能加载本服务，只是这两个调用会被拒绝。`@deepseek-ai/dsh-experimental-agent-team-profile` 已经挂载了它。
 
 ```yaml
 - id: agent-team-llm-settings
@@ -84,13 +84,13 @@ kind: "package-reference"
 }
 ```
 
-工作区层由会话身份解析：浏览器发送该会话的工作区作用域，Host 从它的工作目录逐级向上找到最近的含 `.git` 的祖先目录。自身没有实时会话的界面——插件设置页——没有身份可发，因此客户端从 `listWorkspaceCandidates` 的候选里挑一个代替自己使用；选择器默认取第一项，也就是创建时间最近的那个。
+工作区层由 Workspace 身份解析：浏览器发送侧边栏列出的某个 Workspace 的身份，Host 从注册表读出它的规范目录，再逐级向上找到最近的含 `.git` 的祖先目录。目录本身不经过线路，因此调用方只能点名 Host 自己铸造过的 Workspace。
 
 除 `version` 外每个字段都是可选的，并且只覆盖它点名的那个全局字段；省略的字段继承全局值。`members` 例外，它按名字合并：工作区声明的成员替换同名的全局成员，全局没有的名字追加在全局编制之后，未声明 `members` 时全局编制原样保留。`members` 条目给出 `name` 与 `description`，可选给出 `prompt`、`context`（默认 `fresh`）、作为权限对的 `sandboxMode`（`read-only`／`workspace-write`／`danger-full-access`）与 `approvalPolicy`（`ask`／`never`）、`provider`、`model` 与 `reasoningEffort`；两个权限旋钮中省略任意一个都随团队自身默认。声明了 `provider` 就必须同时给出 `model`。`allowedRoutes` 与 `roleRoutes` 的每一条也可给出可选的 `reasoningEffort`。成员自带的路由优先于该成员名字上的预设。两层的 `description` 都必须是非空字符串，因此带空描述的 `team.json` 现在会被拒绝，需要先行修正。
 
 ### 获得的功能
 
-服务 `ctx.agentTeamLlm` 暴露 `current()`（全局层）、`resolveFor(workspaceRoot)`（合并后的值）、`readWorkspaceDocument(root)` 与 `saveWorkspaceDocument(root, document)`（文档本身），以及 `teamRouteFor(settings, name)`（在调用方已读取的设置值里取单个 teammate 的路由）。两个 `agentTeamLlm` Remote 供浏览器使用：`readTeamDocument` 与 `saveTeamDocument`。两者都接收会话的工作区作用域，在 Host 上推导 `<scope root>/.dsh/team.json`，绝不接受来自线路的路径。第三个 Remote `listWorkspaceCandidates` 不接收作用域，返回至多 20 个带工作目录的顶层会话，按创建时间倒序，好让自身没有会话的调用方仍能挑一个作为自己的作用域。子会话被排除，因为它跑在父会话的工作区里，会把同一个目录提供两次。排序用创建时间而非最近使用：持久会话的最后提问时间属于 GUI API 的会话列表投影，headless 组合并不挂载它，因此不参与该排序。第四个 Remote `listMemberPermissionPresets` 返回已配置的权限预设、每个预设写入的 sandbox mode 与 approval policy，以及权限域对「不匹配任何预设的旋钮对」给出的值；它从已组合的 `permissionPresets` 服务解析，该服务缺席时不返回任何预设，好让设置卡片把成员的权限显示为预设名而不是原始旋钮对。teammate 会保留自己持久化的路由，因此预设对该名字的每次后续创建都生效，且 teammate 会按自己 descriptor 记录的路由恢复。
+服务 `ctx.agentTeamLlm` 暴露 `current()`（全局层）、`resolveFor(workspaceRoot)`（合并后的值）、`readWorkspaceDocument(root)` 与 `saveWorkspaceDocument(root, document)`（文档本身），以及 `teamRouteFor(settings, name)`（在调用方已读取的设置值里取单个 teammate 的路由）。两个 `agentTeamLlm` Remote 供浏览器使用：`readTeamDocument` 与 `saveTeamDocument`。两者都接收一个 Workspace 身份，在注册表里解析出该 Workspace 的规范目录，在 Host 上推导 `<directory>/.dsh/team.json`，绝不接受来自线路的路径；该 Workspace 没有 `.git` 祖先时读取返回空路径、写入直接拒绝。没挂载 Workspace 注册表的组合仍能加载本服务，只是这两个调用会被拒绝。第三个 Remote `listMemberPermissionPresets` 返回已配置的权限预设、每个预设写入的 sandbox mode 与 approval policy，以及权限域对「不匹配任何预设的旋钮对」给出的值；它从已组合的 `permissionPresets` 服务解析，该服务缺席时不返回任何预设，好让设置卡片把成员的权限显示为预设名而不是原始旋钮对。teammate 会保留自己持久化的路由，因此预设对该名字的每次后续创建都生效，且 teammate 会按自己 descriptor 记录的路由恢复。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现
@@ -157,6 +157,7 @@ Lead 的工具结果里每位成员一份 `name` 与 `description`，外加该�
 - **没有按任务的路由**——预设以 teammate 名字为键，因此按任务区分的编制需要一名一路由。
 - **路由仍整表覆盖**——工作区文档会替换它声明的全局 `allowedRoutes` 或 `roleRoutes` 清单，而不是向其中追加，因此项目无法只往部署清单里加一条路由；`members` 则是按名字合并。
 - **编制上限按层计算**——`maxMembers` 分别约束每一层，因此当工作区文档声明一整份全局编制里没有的名字时，这些成员会并入全局编制，组建出的团队最多可达该上限的两倍；`spawn_team` 不再额外限制。
+- **选择器只列已注册的 Workspace**——只在某目录跑过会话、却从未把它注册成 Workspace 时，该目录没有对应行，只有在侧边栏采纳它之后才能编辑它的团队文档。
 
 <a id="dev-note"></a>
 ### 开发备注

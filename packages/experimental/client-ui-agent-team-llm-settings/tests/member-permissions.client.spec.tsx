@@ -26,12 +26,16 @@ import {
   type AgentTeamLlmMemberDraft,
 } from '../src/client/team-document.ts'
 import { en } from '../src/client/locales.ts'
+import { workspaceId, workspaceRow, workspaceSource } from './workspace-source.client.ts'
 
 afterEach(cleanup)
 
 const t = (key: keyof typeof en) => en[key]
 
 const SESSION = SessionId('session-1')
+
+/** The one Workspace the sidebar lists, accounting for {@link SESSION}. */
+const SIDEBAR = [workspaceRow('ws-1', 'project', '/project', [SESSION])]
 
 /**
  * The options the Host serves. One label equals its key, so the card renders its
@@ -167,10 +171,9 @@ describe('member permission controller staging', () => {
     const documents = {
       readTeamDocument: () => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json', document: null } }),
       saveTeamDocument: vi.fn(() => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } })),
-      listWorkspaceCandidates: () => Promise.resolve({ ok: true as const, value: [] }),
       listMemberPermissionPresets: () => Promise.resolve({ ok: true as const, value: CATALOG }),
     }
-    const controller = new AgentTeamLlmCardController(host.scope, catalog as never, documents, () => SESSION)
+    const controller = new AgentTeamLlmCardController(host.scope, catalog as never, documents, () => SESSION, workspaceSource(SIDEBAR))
     const face = controller.inject()
     return { host, documents, face, state: () => face.hooks.agentTeamLlmCard.getSnapshot() }
   }
@@ -244,13 +247,12 @@ describe('member permission controller staging', () => {
         value: { path: '/project/.dsh/team.json', document: { version: 1 as const, members: [{ name: 'recon', description: 'Reads the tree.' }] } },
       }),
       saveTeamDocument: vi.fn(() => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } })),
-      listWorkspaceCandidates: () => Promise.resolve({ ok: true as const, value: [] }),
       listMemberPermissionPresets: () => Promise.resolve({ ok: true as const, value: CATALOG }),
     }
     const catalog = {
       remote: { session: { modelCatalog: () => Promise.resolve({ ok: true as const, value: { groups: [], failures: [] } }) } },
     }
-    const controller = new AgentTeamLlmCardController(host.scope, catalog as never, documents, () => SESSION)
+    const controller = new AgentTeamLlmCardController(host.scope, catalog as never, documents, () => SESSION, workspaceSource(SIDEBAR))
     const face = controller.inject()
     const state = () => face.hooks.agentTeamLlmCard.getSnapshot()
     await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
@@ -260,7 +262,7 @@ describe('member permission controller staging', () => {
     face.save()
 
     await vi.waitFor(() => { expect(documents.saveTeamDocument).toHaveBeenCalledOnce() })
-    expect(documents.saveTeamDocument).toHaveBeenCalledWith(SESSION, {
+    expect(documents.saveTeamDocument).toHaveBeenCalledWith(workspaceId('ws-1'), {
       version: 1,
       members: [{
         name: 'recon', description: 'Reads the tree.', context: 'fresh',
@@ -285,13 +287,12 @@ describe('member permission controller staging', () => {
     const documents = {
       readTeamDocument: () => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json', document: null } }),
       saveTeamDocument: vi.fn(() => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } })),
-      listWorkspaceCandidates: () => Promise.resolve({ ok: true as const, value: [] }),
       listMemberPermissionPresets: () => pending,
     }
     const catalog = {
       remote: { session: { modelCatalog: () => Promise.resolve({ ok: true as const, value: { groups: [], failures: [] } }) } },
     }
-    const controller = new AgentTeamLlmCardController(host.scope, catalog as never, documents, () => SESSION)
+    const controller = new AgentTeamLlmCardController(host.scope, catalog as never, documents, () => SESSION, workspaceSource(SIDEBAR))
     const state = () => controller.inject().hooks.agentTeamLlmCard.getSnapshot()
     await vi.waitFor(() => { expect(state().catalogStatus).toBe('ready') })
 
@@ -310,7 +311,7 @@ describe('member permission row control', () => {
     const store = createSnapshotStore<AgentTeamLlmCardState>({
       ...shell,
       scope: 'global',
-      workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined, reason: undefined, candidatesStatus: 'ready', candidates: [], sessionId: undefined },
+      workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined, reason: undefined, candidates: [], workspaceId: undefined },
       enabled: true,
       candidates: [],
       allowed: [],
@@ -380,7 +381,7 @@ describe('member permission row control', () => {
       }],
     })
 
-    expect((screen.getByLabelText(en.agentTeamLlmMemberSandbox) as HTMLSelectElement).value)
+    expect(screen.getByLabelText<HTMLSelectElement>(en.agentTeamLlmMemberSandbox).value)
       .toBe('danger-full-access')
   })
 

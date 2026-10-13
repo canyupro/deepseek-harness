@@ -177,33 +177,13 @@ readWorkspaceDocument(root: string): TeamDocument | undefined
 async saveWorkspaceDocument(root: string, document: TeamDocument): Promise<string>
 
 /**
- * Read the workspace document for one Session's workspace.
- * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
+ * Read the workspace document of one registered Workspace.
+ * @param workspaceId - Workspace identity the Host resolves a project root from.
  * @param signal - caller cancellation.
  * @returns the document path and its contents; both are null without a project root or a document.
+ * @throws RemoteError when the composition mounts no Workspace registry, or the identity names none.
  */
-@Remote readTeamDocument(workspaceFileScope: WorkspaceFileScope, signal: AbortSignal): TeamDocumentRead
-
-/**
- * List the Sessions a workspace team document can be edited for.
- *
- * A caller with no Session of its own — the plugin settings page, where no
- * Session is live — still needs one identity to resolve a project root from.
- * Only top-level Sessions qualify: a subagent child runs inside its parent's
- * workspace, and listing one as a separate choice would offer the picker the
- * same directory twice. A Session whose header carries no working directory
- * is skipped, because the document Remote resolves a project root by walking
- * up from that directory.
- *
- * The order key is the header's creation time. A durable Session's
- * last-prompt time belongs to the GUI API session-list projection, which the
- * headless composition does not mount, so it takes no part in this order and
- * a candidate created earlier but used later ranks below this one.
- * @param signal - caller cancellation.
- * @returns at most the newest 20 candidates, newest-created first.
- * @throws Error when the caller aborted.
- */
-@Remote async listWorkspaceCandidates(signal: AbortSignal): Promise<readonly WorkspaceSessionCandidate[]>
+@Remote readTeamDocument(workspaceId: WorkspaceId, signal: AbortSignal): TeamDocumentRead
 
 /**
  * List the permissions options a roster member may select.
@@ -222,17 +202,19 @@ async saveWorkspaceDocument(root: string, document: TeamDocument): Promise<strin
 @Remote listMemberPermissionPresets(signal: AbortSignal): TeamMemberPermissionCatalog
 
 /**
- * Validate and atomically write the workspace document for one Session's workspace.
+ * Validate and atomically write the workspace document of one registered Workspace.
  *
- * The path is derived from the Session's workspace root, never from the wire.
- * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
+ * The directory is resolved from the Workspace registry, never from the wire.
+ * @param workspaceId - Workspace identity the Host resolves a project root from.
  * @param document - document to validate and write.
  * @param signal - caller cancellation.
  * @returns the absolute path the document was written to.
- * @throws RemoteError when the workspace root has no project root.
+ * @throws RemoteError when the composition mounts no Workspace registry, the identity names none, or the workspace has no project root.
  */
-@Remote async saveTeamDocument( workspaceFileScope: WorkspaceFileScope, document: TeamDocument, signal: AbortSignal, ): Promise<TeamDocumentPath>
+@Remote async saveTeamDocument( workspaceId: WorkspaceId, document: TeamDocument, signal: AbortSignal, ): Promise<TeamDocumentPath>
 ```
+
+Types: [WorkspaceId](workspace.zh.md)
 
 Source: [`packages/experimental/agent-team-llm-settings/src/index.ts`](../../packages/experimental/agent-team-llm-settings/src/index.ts)
 

@@ -11,6 +11,7 @@ import { apply as settingsApply, inject as settingsInject } from '@deepseek-ai/d
 import { inject, mountAgentTeamLlmSettingsCard } from '../src/client/mount.ts'
 import type { AgentTeamLlmCardFace } from '../src/client/index.ts'
 import { AgentTeamLlmCardController } from '../src/client/agent-team-llm-card-controller.ts'
+import { workspaceSource } from './workspace-source.client.ts'
 import { apply as hostApply } from '../src/index.ts'
 
 /** The generated contribution this plugin mounts. */
@@ -71,11 +72,11 @@ async function bench(served?: string[]) {
     saveTeamDocument: vi.fn(() => Promise.resolve({
       ok: true as const, value: { path: '/project/.dsh/team.json' },
     })),
-    listWorkspaceCandidates: vi.fn(() => Promise.resolve({ ok: true as const, value: [] })),
     listMemberPermissionPresets: vi.fn(() => Promise.resolve({
       ok: true as const, value: { presets: [], custom: { name: 'custom', label: 'custom' } },
     })),
   })
+  ctx.provide('workspaces', { list: workspaceSource() } as never)
   ctx.provide('sessions', {
     list: {
       getSnapshot: () => ({ ids: [], byId: {}, phase: 'ready', projectionsBySession: {} }),

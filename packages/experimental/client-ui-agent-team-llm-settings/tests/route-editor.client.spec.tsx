@@ -42,7 +42,7 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
   const store = createSnapshotStore<AgentTeamLlmCardState>({
     ...shell,
     scope: 'global',
-    workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined, reason: undefined, candidatesStatus: 'ready', candidates: [], sessionId: undefined },
+    workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined, reason: undefined, candidates: [], workspaceId: undefined },
     enabled: true,
     candidates: [allowed()],
     allowed: [allowed()],

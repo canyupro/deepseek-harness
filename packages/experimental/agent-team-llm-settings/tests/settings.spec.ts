@@ -3,27 +3,34 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
-import type { WorkspaceFileScope } from '@deepseek-ai/dsh-api-workspace-files'
+import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { PermissionPresetService } from '@deepseek-ai/dsh-permission-presets'
 import AgentTeamLlmSettings, { teamRouteFor } from '../src/index.ts'
 import type { TeamDocument } from '../src/index.ts'
-import { TestSessionQuery, setSessionRecords, topLevelSession, childSession } from './test-session-query.ts'
 
 const ROUTE = { provider: 'mock', model: 'flash' }
 const OTHER = { provider: 'mock', model: 'strong' }
 
+/** The failure code one synchronous Remote call threw with. */
+function failureCode(run: () => unknown): string {
+  try {
+    run()
+  } catch (error) {
+    const failure = remoteErrorOf(error)
+    if (failure !== undefined) return failure.code
+    throw error
+  }
+  throw new Error('expected a RemoteError failure')
+}
+
 /**
- * A Context carrying the `sessionQuery` the settings service injects. The
- * service reads the corpus only to offer workspace candidates, so an empty
- * scripted corpus keeps every other case independent of session state.
+ * A Context the settings service mounts on. The service injects nothing and
+ * reads the Workspace registry opportunistically, so a case provides that
+ * registry only when it exercises the workspace document Remotes.
  */
 async function testContext(): Promise<Context> {
-  const ctx = new Context()
-  await ctx.plugin(SessionStore)
-  await ctx.plugin(TestSessionQuery)
-  setSessionRecords([])
-  return ctx
+  return new Context()
 }
 
 describe('agent-team-llm-settings', () => {
@@ -562,20 +569,33 @@ describe('agent-team-llm-settings workspace document', () => {
     expect(ctx.agentTeamLlm.resolveFor(repo).members[0]?.description).toBe('Second roster.')
   })
 
-  it('reads the document through the Remote without a path from the wire', async () => {
-    await mount()
-    await ctx.agentTeamLlm.saveWorkspaceDocument(repo, { version: 1, enabled: false })
-    const scope: WorkspaceFileScope = { sessionId: SessionId('team-settings'), workspaceRoot: repo }
+  /** Register one directory as the directory one Workspace identity resolves to. */
+  function provideWorkspace(workspaceId: WorkspaceId, path: string): void {
+    // The registry class owns private state, so a stand-in covering only `get`
+    // cannot be structurally assigned to the service property.
+    ctx.provide('workspaceRegistry', {
+      get: (id: WorkspaceId) => id === workspaceId ? { path } : undefined,
+    } as never)
+  }
 
-    expect(ctx.agentTeamLlm.readTeamDocument(scope, new AbortController().signal))
+  const workspaceId = 'ws-1' as WorkspaceId
+  const signal = new AbortController().signal
+
+  it('writes and reads the document of a registered workspace through the Remote', async () => {
+    await mount()
+    provideWorkspace(workspaceId, repo)
+
+    await expect(ctx.agentTeamLlm.saveTeamDocument(workspaceId, { version: 1, enabled: false }, signal))
+      .resolves.toEqual({ path: join(repo, '.dsh', 'team.json') })
+    expect(ctx.agentTeamLlm.readTeamDocument(workspaceId, signal))
       .toEqual({ path: join(repo, '.dsh', 'team.json'), document: { version: 1, enabled: false } })
   })
 
   it('reports the document path with no document through the Remote', async () => {
     await mount()
-    const scope: WorkspaceFileScope = { sessionId: SessionId('team-settings'), workspaceRoot: repo }
+    provideWorkspace(workspaceId, repo)
 
-    expect(ctx.agentTeamLlm.readTeamDocument(scope, new AbortController().signal))
+    expect(ctx.agentTeamLlm.readTeamDocument(workspaceId, signal))
       .toEqual({ path: join(repo, '.dsh', 'team.json'), document: null })
   })
 
@@ -588,47 +608,71 @@ describe('agent-team-llm-settings workspace document', () => {
 
   it('reports a Remote write failure that is not a document rejection', async () => {
     await mount()
+    provideWorkspace(workspaceId, repo)
     await mkdir(join(repo, '.dsh', 'team.json'), { recursive: true })
-    const scope: WorkspaceFileScope = { sessionId: SessionId('team-settings'), workspaceRoot: repo }
 
-    await expect(ctx.agentTeamLlm.saveTeamDocument(scope, { version: 1 }, new AbortController().signal))
+    await expect(ctx.agentTeamLlm.saveTeamDocument(workspaceId, { version: 1 }, signal))
       .rejects.toThrow(/team\.json/u)
   })
 
-  it('reports no document path when the Session workspace has no project root', async () => {
+  it('reports no document path when the registered workspace has no project root', async () => {
     await mount()
     const detached = await mkdtemp(join(tmpdir(), 'dsh-team-detached-'))
-    const scope: WorkspaceFileScope = { sessionId: SessionId('team-settings'), workspaceRoot: detached }
+    const detachedId = 'ws-detached' as WorkspaceId
+    provideWorkspace(detachedId, detached)
 
     try {
-      expect(ctx.agentTeamLlm.readTeamDocument(scope, new AbortController().signal))
-        .toEqual({ path: null, document: null })
-      await expect(ctx.agentTeamLlm.saveTeamDocument(scope, { version: 1 }, new AbortController().signal))
-        .rejects.toThrow(/no \.git ancestor/u)
+      expect(ctx.agentTeamLlm.readTeamDocument(detachedId, signal)).toEqual({ path: null, document: null })
+      const failure = await ctx.agentTeamLlm.saveTeamDocument(detachedId, { version: 1 }, signal)
+        .catch((error: unknown) => error)
+      expect(remoteErrorOf(failure)?.code).toBe('team-document/no-project-root')
+      expect(remoteErrorOf(failure)?.message).toMatch(/no \.git ancestor/u)
     } finally {
       await rm(detached, { recursive: true, force: true })
     }
   })
 
+  it('refuses a Workspace identity the registry does not know', async () => {
+    await mount()
+    provideWorkspace(workspaceId, repo)
+    const unknown = 'ws-missing' as WorkspaceId
+
+    expect(failureCode(() => ctx.agentTeamLlm.readTeamDocument(unknown, signal)))
+      .toBe('team-document/unknown-workspace')
+    await expect(ctx.agentTeamLlm.saveTeamDocument(unknown, { version: 1 }, signal))
+      .rejects.toMatchObject({ code: 'team-document/unknown-workspace' })
+  })
+
+  it('refuses a workspace document call when the composition mounts no Workspace registry', async () => {
+    await mount()
+
+    expect(failureCode(() => ctx.agentTeamLlm.readTeamDocument(workspaceId, signal)))
+      .toBe('team-document/no-workspace-registry')
+    await expect(ctx.agentTeamLlm.saveTeamDocument(workspaceId, { version: 1 }, signal))
+      .rejects.toMatchObject({ code: 'team-document/no-workspace-registry' })
+  })
+
   it('reports a rejected Remote document write', async () => {
     await mount()
-    const scope: WorkspaceFileScope = { sessionId: SessionId('team-settings'), workspaceRoot: repo }
+    provideWorkspace(workspaceId, repo)
 
-    await expect(ctx.agentTeamLlm.saveTeamDocument(
-      scope,
+    const failure = await ctx.agentTeamLlm.saveTeamDocument(
+      workspaceId,
       { version: 1, members: [{ name: 'Recon', description: 'Reads.' }] },
-      new AbortController().signal,
-    )).rejects.toThrow(/team\.json members\[0\]\.name: "Recon" must match/u)
+      signal,
+    ).catch((error: unknown) => error)
+    expect(remoteErrorOf(failure)?.code).toBe('team-document/invalid')
+    expect(remoteErrorOf(failure)?.message).toMatch(/team\.json members\[0\]\.name: "Recon" must match/u)
   })
 
   it('honors a canceled Remote call', async () => {
     await mount()
-    const scope: WorkspaceFileScope = { sessionId: SessionId('team-settings'), workspaceRoot: repo }
+    provideWorkspace(workspaceId, repo)
     const aborted = new AbortController()
     aborted.abort()
 
-    expect(() => ctx.agentTeamLlm.readTeamDocument(scope, aborted.signal)).toThrow(/aborted/u)
-    await expect(ctx.agentTeamLlm.saveTeamDocument(scope, { version: 1 }, aborted.signal)).rejects.toThrow(/aborted/u)
+    expect(() => ctx.agentTeamLlm.readTeamDocument(workspaceId, aborted.signal)).toThrow(/aborted/u)
+    await expect(ctx.agentTeamLlm.saveTeamDocument(workspaceId, { version: 1 }, aborted.signal)).rejects.toThrow(/aborted/u)
   })
 
   it('reports a malformed document as a decoding failure', async () => {
@@ -909,99 +953,6 @@ describe('agent-team-llm-settings member approval policy', () => {
     ])
     // The declared entry replaced the global one in place, so global order holds.
     expect(members.map(member => member.name)).toEqual(['recon', 'writer'])
-  })
-})
-
-describe('agent-team-llm-settings workspace candidates', () => {
-  let ctx: Context
-
-  beforeEach(async () => {
-    ctx = await testContext()
-  })
-
-  afterEach(async () => {
-    await ctx.fiber.dispose()
-  })
-
-  /** Mount the service so the Remote the card calls answers candidates. */
-  async function mount(): Promise<void> {
-    await ctx.plugin(AgentTeamLlmSettings, { allowedRoutes: [ROUTE] })
-  }
-
-  const signal = new AbortController().signal
-
-  it('offers a top-level Session with a working directory as a candidate', async () => {
-    setSessionRecords([topLevelSession('s1', { cwd: '/projects/alpha', createdAt: 1_700_000_000_000 })])
-    await mount()
-
-    expect(await ctx.agentTeamLlm.listWorkspaceCandidates(signal)).toEqual([
-      { sessionId: 's1', cwd: '/projects/alpha', createdAt: 1_700_000_000_000 },
-    ])
-  })
-
-  it('never offers a teammate child Session', async () => {
-    // A child Session resolves its own workspace root, so listing it would fill
-    // the picker with the very subagents the team just spawned.
-    setSessionRecords([
-      topLevelSession('lead', { cwd: '/projects/alpha', createdAt: 2 }),
-      childSession('child', 'lead', { cwd: '/projects/alpha/packages/app', createdAt: 3 }),
-    ])
-    await mount()
-
-    const candidates = await ctx.agentTeamLlm.listWorkspaceCandidates(signal)
-
-    expect(candidates.map(candidate => candidate.sessionId)).toEqual(['lead'])
-  })
-
-  it('never offers a Session whose header omits or empties its working directory', async () => {
-    setSessionRecords([
-      topLevelSession('absent', { createdAt: 1 }),
-      topLevelSession('empty', { cwd: '', createdAt: 2 }),
-      topLevelSession('real', { cwd: '/projects/alpha', createdAt: 3 }),
-    ])
-    await mount()
-
-    expect((await ctx.agentTeamLlm.listWorkspaceCandidates(signal)).map(candidate => candidate.sessionId))
-      .toEqual(['real'])
-  })
-
-  it('ranks candidates newest-created first', async () => {
-    setSessionRecords([
-      topLevelSession('oldest', { cwd: '/a', createdAt: 1 }),
-      topLevelSession('newest', { cwd: '/b', createdAt: 3 }),
-      topLevelSession('middle', { cwd: '/c', createdAt: 2 }),
-    ])
-    await mount()
-
-    expect((await ctx.agentTeamLlm.listWorkspaceCandidates(signal)).map(candidate => candidate.sessionId))
-      .toEqual(['newest', 'middle', 'oldest'])
-  })
-
-  it('offers at most twenty candidates, keeping the twenty newest-created', async () => {
-    setSessionRecords(Array.from({ length: 25 }, (_unused, index) =>
-      topLevelSession(`s${index}`, { cwd: `/projects/p${index}`, createdAt: index })))
-    await mount()
-
-    const candidates = await ctx.agentTeamLlm.listWorkspaceCandidates(signal)
-
-    expect(candidates).toHaveLength(20)
-    expect(candidates[0]?.sessionId).toBe('s24')
-    expect(candidates.at(-1)?.sessionId).toBe('s5')
-  })
-
-  it('offers nothing when the corpus holds no usable Session', async () => {
-    setSessionRecords([])
-    await mount()
-
-    expect(await ctx.agentTeamLlm.listWorkspaceCandidates(signal)).toEqual([])
-  })
-
-  it('honors a canceled candidate listing', async () => {
-    setSessionRecords([topLevelSession('s1', { cwd: '/projects/alpha', createdAt: 1 })])
-    await mount()
-
-    await expect(ctx.agentTeamLlm.listWorkspaceCandidates(AbortSignal.abort()))
-      .rejects.toThrow()
   })
 })
 

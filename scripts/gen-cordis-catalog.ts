@@ -845,7 +845,6 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   TeamDocument: 'the workspace team document is owned by packages/experimental/agent-team-llm-settings/README.md',
   TeamDocumentRead: 'the workspace document read result is owned by packages/experimental/agent-team-llm-settings/README.md',
   TeamDocumentPath: 'the saved workspace document path is owned by packages/experimental/agent-team-llm-settings/README.md',
-  WorkspaceSessionCandidate: 'the workspace session candidate is owned by packages/experimental/agent-team-llm-settings/README.md',
   TeamMemberPermissionCatalog: 'the member permissions catalog is owned by packages/experimental/agent-team-llm-settings/README.md',
   MemberApprovalPolicy: 'the member approval policy is owned by packages/experimental/agent-team/README.md',
   MemberSandboxMode: 'the member sandbox mode is owned by packages/experimental/agent-team/README.md',

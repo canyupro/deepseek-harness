@@ -1,5 +1,6 @@
 /** One settings card for the two Host-owned Agent Teams routing documents. */
 
+import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace'
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import { SettingsForm } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -12,17 +13,6 @@ import { formLabels } from './locales.ts'
 /** Framework-derived props for the Agent Team LLM routing card. */
 export type AgentTeamLlmCardProps = PropsRuntime<'plugins.item'>
   & PropsLocale<'settings.agentTeamLlm'> & InjectFace<AgentTeamLlmCardFace>
-
-/**
- * The last segment of a working directory, for the session picker. The browser
- * has no `node:path`, so both separators are cut on.
- * @param cwd - Absolute working directory the Host reported.
- * @returns Its final path segment, or the whole string when it names none.
- */
-function workspaceSessionName(cwd: string): string {
-  const segments = cwd.split(/[/\\]+/).filter(segment => segment !== '')
-  return segments[segments.length - 1] ?? cwd
-}
 
 /**
  * Render the scope switch and the routing document of the selected scope.
@@ -62,6 +52,39 @@ export function AgentTeamLlmCard(props: AgentTeamLlmCardProps) {
             {t('agentTeamLlmScopeWorkspace')}
           </button>
         </div>
+        {/* The picker chooses which Workspace the layer edits, so it stands
+            beside the tabs: a Workspace with no project root greys the tab out,
+            and the operator needs the picker to reach one that does not. */}
+        {workspace.candidates.length > 0
+          ? (
+            <label className={css.workspaceField}>
+              <span className={css.fieldLabel}>{t('agentTeamLlmWorkspacePicker')}</span>
+              <select
+                className={css.select}
+                value={workspace.workspaceId ?? ''}
+                aria-label={t('agentTeamLlmWorkspacePicker')}
+                disabled={workspace.status === 'loading' || state.saving || !state.writable}
+                onChange={(event) => {
+                  // Resolve the offered row rather than branding the raw string,
+                  // so the branded identity the sidebar published is the one the
+                  // card carries on.
+                  const chosen = workspace.candidates
+                    .find(candidate => candidate.workspaceId === event.target.value)
+                  if (chosen !== undefined) props.setWorkspace(chosen.workspaceId)
+                }}
+              >
+                {workspace.candidates.map(candidate => (
+                  <option key={candidate.workspaceId} value={candidate.workspaceId} title={candidate.path}>
+                    {/* The sidebar labels the first-use Workspace by its own
+                        localized name, so the picker reads the stored title
+                        through the same fold and lists the same names. */}
+                    {workspaceDisplayTitle(candidate.title, t('agentTeamLlmWorkspaceDefault'))}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )
+          : null}
         {workspace.status === 'loading'
           ? <p className={css.notice} role="status">{t('agentTeamLlmWorkspaceLoading')}</p>
           : null}
@@ -70,8 +93,8 @@ export function AgentTeamLlmCard(props: AgentTeamLlmCardProps) {
             <p className={css.notice} role="status">
               {/* Two boundaries can stop this layer; naming which one keeps a
                   greyed tab attributable instead of a guess. */}
-              {t(workspace.reason === 'noSession'
-                ? 'agentTeamLlmWorkspaceNoSession'
+              {t(workspace.reason === 'noWorkspace'
+                ? 'agentTeamLlmWorkspaceNoWorkspace'
                 : workspace.reason === 'noProjectRoot'
                   ? 'agentTeamLlmWorkspaceNoProjectRoot'
                   : 'agentTeamLlmWorkspaceUnavailable')}
@@ -133,33 +156,6 @@ export function AgentTeamLlmCard(props: AgentTeamLlmCardProps) {
         : (
           <>
             <div className={css.workspace}>
-              {workspace.candidates.length > 0
-                ? (
-                  <label className={css.workspaceField}>
-                    <span className={css.fieldLabel}>{t('agentTeamLlmWorkspaceSession')}</span>
-                    <select
-                      className={css.select}
-                      value={workspace.sessionId ?? ''}
-                      aria-label={t('agentTeamLlmWorkspaceSession')}
-                      disabled={workspace.status === 'loading' || state.saving || !state.writable}
-                      onChange={(event) => {
-                        // Resolve the offered row rather than branding the raw
-                        // string, so the branded identity the Host minted is the
-                        // one the card carries on.
-                        const chosen = workspace.candidates
-                          .find(candidate => candidate.sessionId === event.target.value)
-                        if (chosen !== undefined) props.setWorkspaceSession(chosen.sessionId)
-                      }}
-                    >
-                      {workspace.candidates.map(candidate => (
-                        <option key={candidate.sessionId} value={candidate.sessionId} title={candidate.cwd}>
-                          {workspaceSessionName(candidate.cwd)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )
-                : null}
               {workspace.error !== undefined
                 ? (
                   // A refused read is retried; a refused write is corrected in

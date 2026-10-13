@@ -21,14 +21,12 @@ const shell: SettingsFormShell = {
   available: true, writable: true, dirty: false, invalid: false, saving: false, failed: false,
 }
 
-type Workspace = AgentTeamLlmCardState['workspace']
-
 /** The card over one snapshot. */
 function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
   const store = createSnapshotStore<AgentTeamLlmCardState>({
     ...shell,
     scope: 'global',
-    workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined, reason: undefined, candidatesStatus: 'ready', candidates: [], sessionId: undefined },
+    workspace: { status: 'ready', path: '/project/.dsh/team.json', error: undefined, reason: undefined, candidates: [], workspaceId: undefined },
     enabled: true,
     candidates: [],
     allowed: [],
@@ -46,7 +44,7 @@ function renderCard(state: Partial<AgentTeamLlmCardState> = {}) {
     setScope: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(), setMemberName: vi.fn(),
     setMemberDescription: vi.fn(), setMemberPrompt: vi.fn(), setMemberContext: vi.fn(),
     setMemberPermissions: vi.fn(), setMemberRoute: vi.fn(), setMemberRouteFields: vi.fn(),
-    setMemberEffort: vi.fn(), retryWorkspace: vi.fn(), toggleEnabled: vi.fn(), toggleRoute: vi.fn(),
+    setMemberEffort: vi.fn(), retryWorkspace: vi.fn(), setWorkspace: vi.fn(), toggleEnabled: vi.fn(), toggleRoute: vi.fn(),
     addAllowedRoute: vi.fn(), removeAllowedRoute: vi.fn(), setRouteEffort: vi.fn(),
     setDefaultRoute: vi.fn(), retryCatalog: vi.fn(), addRole: vi.fn(), removeRole: vi.fn(),
     setRoleName: vi.fn(), setRoleRoute: vi.fn(), setRoleEffort: vi.fn(),
@@ -83,28 +81,28 @@ describe('card scope tabs', () => {
 
 describe('workspace layer notices', () => {
   it('reports a layer that is still being read', () => {
-    renderCard({ workspace: { status: 'loading', path: undefined, error: undefined, reason: undefined, candidatesStatus: 'idle', candidates: [], sessionId: undefined } })
+    renderCard({ workspace: { status: 'loading', path: undefined, error: undefined, reason: undefined, candidates: [], workspaceId: undefined } })
 
     expect(screen.getByRole('status').textContent).toBe(en.agentTeamLlmWorkspaceLoading)
   })
 
-  it('names no session separately from no project root', () => {
-    renderCard({ workspace: { status: 'unavailable', path: undefined, error: undefined, reason: 'noSession', candidatesStatus: 'ready', candidates: [], sessionId: undefined } })
-    expect(screen.getByRole('status').textContent).toBe(en.agentTeamLlmWorkspaceNoSession)
+  it('names an empty sidebar separately from no project root', () => {
+    renderCard({ workspace: { status: 'unavailable', path: undefined, error: undefined, reason: 'noWorkspace', candidates: [], workspaceId: undefined } })
+    expect(screen.getByRole('status').textContent).toBe(en.agentTeamLlmWorkspaceNoWorkspace)
 
     cleanup()
-    renderCard({ workspace: { status: 'unavailable', path: undefined, error: undefined, reason: 'noProjectRoot', candidatesStatus: 'ready', candidates: [], sessionId: undefined } })
+    renderCard({ workspace: { status: 'unavailable', path: undefined, error: undefined, reason: 'noProjectRoot', candidates: [], workspaceId: undefined } })
     // The two boundaries get different copy, so a greyed tab names its cause.
     expect(screen.getByRole('status').textContent).toBe(en.agentTeamLlmWorkspaceNoProjectRoot)
-    expect(en.agentTeamLlmWorkspaceNoSession).not.toBe(en.agentTeamLlmWorkspaceNoProjectRoot)
+    expect(en.agentTeamLlmWorkspaceNoWorkspace).not.toBe(en.agentTeamLlmWorkspaceNoProjectRoot)
 
     cleanup()
-    renderCard({ workspace: { status: 'unavailable', path: undefined, error: undefined } as Workspace })
+    renderCard({ workspace: { status: 'unavailable', path: undefined, error: undefined, reason: undefined, candidates: [], workspaceId: undefined } })
     expect(screen.getByRole('status').textContent).toBe(en.agentTeamLlmWorkspaceUnavailable)
   })
 
   it('disables the workspace tab while the layer cannot be read', () => {
-    renderCard({ workspace: { status: 'unavailable', path: undefined, error: undefined, reason: 'noSession', candidatesStatus: 'ready', candidates: [], sessionId: undefined } })
+    renderCard({ workspace: { status: 'unavailable', path: undefined, error: undefined, reason: 'noWorkspace', candidates: [], workspaceId: undefined } })
 
     const [, workspace] = screen.getAllByRole('tab')
     expect(workspace!).toHaveProperty('disabled', true)
@@ -113,7 +111,7 @@ describe('workspace layer notices', () => {
   it('reports a refused workspace read at card level while its tab stays disabled', () => {
     const { actions } = renderCard({
       scope: 'global',
-      workspace: { status: 'error', path: undefined, error: 'the session corpus is unavailable', reason: undefined, candidatesStatus: 'error', candidates: [], sessionId: undefined },
+      workspace: { status: 'error', path: undefined, error: 'the workspace projection is unavailable', reason: undefined, candidates: [], workspaceId: undefined },
     })
 
     // Nothing readable backs the workspace tab, so the refusal and its retry
@@ -123,7 +121,7 @@ describe('workspace layer notices', () => {
 
     const alert = screen.getByRole('alert')
     expect(alert.textContent).toContain(en.agentTeamLlmWorkspaceLoadFailed)
-    expect(alert.textContent).toContain('the session corpus is unavailable')
+    expect(alert.textContent).toContain('the workspace projection is unavailable')
     fireEvent.click(within(alert).getByRole('button', { name: en.agentTeamLlmWorkspaceRetry }))
 
     expect(actions.retryWorkspace).toHaveBeenCalledOnce()
@@ -132,7 +130,7 @@ describe('workspace layer notices', () => {
   it('leaves the single refusal alert to the open workspace tab', () => {
     renderCard({
       scope: 'workspace',
-      workspace: { status: 'error', path: undefined, error: 'the session corpus is unavailable', reason: undefined, candidatesStatus: 'error', candidates: [], sessionId: undefined },
+      workspace: { status: 'error', path: undefined, error: 'the workspace projection is unavailable', reason: undefined, candidates: [], workspaceId: undefined },
     })
 
     // The card-level notice stands down in the workspace layer, so one refusal
@@ -144,7 +142,7 @@ describe('workspace layer notices', () => {
   it('reports a refusal that carries no Host text as the bare failure copy', () => {
     renderCard({
       scope: 'global',
-      workspace: { status: 'error', path: undefined, error: undefined, reason: undefined, candidatesStatus: 'error', candidates: [], sessionId: undefined },
+      workspace: { status: 'error', path: undefined, error: undefined, reason: undefined, candidates: [], workspaceId: undefined },
     })
 
     // A refusal may arrive without text; the notice still names the failure

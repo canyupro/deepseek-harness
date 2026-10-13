@@ -2,14 +2,15 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import type { Volatile } from '@deepseek-ai/cordis'
-import type { WorkspaceFileScope } from '@deepseek-ai/dsh-api-workspace-files'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 // Type-only: resolves `ctx.get('permissionPresets')` to the permission domain's
 // service when one is composed — the member permissions list consumes it
 // opportunistically (the documented `ctx.get` pattern), never as a hard dep.
 import type { PermissionPresetService } from '@deepseek-ai/dsh-permission-presets'
-// Type-only: pulls the SessionQuery service merge (ctx.sessionQuery).
-import type {} from '@deepseek-ai/dsh-session-query'
+// Type-only: pulls the Workspace registry merge (ctx.workspaceRegistry), the
+// authority every workspace team document resolves its directory from.
+import type { WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { FRESH_MEMBER_CONTEXT, LEAD_TEAM_NAME, TEAM_MEMBER_NAME, TeamDocumentError, parseTeamDocument } from './document.ts'
@@ -24,7 +25,6 @@ import type {
   TeamMemberDocument,
   TeamMemberPermissionCatalog,
   TeamMemberPermissionPreset,
-  WorkspaceSessionCandidate,
 } from './types.ts'
 import { findProjectRoot, readDocumentFile, teamDocumentPath, writeDocumentFile } from './workspace-document.ts'
 
@@ -124,13 +124,6 @@ export interface TeamMemberInput {
   /** Adapter-owned reasoning effort; omission uses the model default. */
   readonly reasoningEffort?: string
 }
-
-/**
- * Most workspace candidates one picker call returns. The picker chooses among
- * recent workspaces, so a longer corpus is truncated rather than paged: an
- * unbounded list would grow with every Session the host has ever kept.
- */
-const WORKSPACE_CANDIDATE_LIMIT = 20
 
 /**
  * Option value the permission domain derives for knob values matching no
@@ -339,8 +332,6 @@ function overlayDocument(global: AgentTeamLlmSettingsValue, document: TeamDocume
  * workspace layer and the global value stands.
  */
 export class AgentTeamLlmSettings extends TypertRemoteService {
-  static inject = ['sessionQuery']
-
   static Config = z.object({
     enabled: z.boolean().default(false).volatile(),
     allowedRoutes: z.array(routeSchema).default([]).volatile(),
@@ -432,52 +423,52 @@ export class AgentTeamLlmSettings extends TypertRemoteService {
   }
 
   /**
-   * Read the workspace document for one Session's workspace.
-   * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
-   * @param signal - caller cancellation.
-   * @returns the document path and its contents; both are null without a project root or a document.
+   * Resolve one registered Workspace to the directory its team document lives above.
+   *
+   * The directory comes from the Workspace registry, never from the wire: a
+   * caller names an identity the Host minted, and the Host decides which
+   * directory that identity owns. The registry is read opportunistically, so a
+   * composition that mounts no Workspace layer keeps this service loadable and
+   * refuses only the workspace document calls it cannot answer.
+   * @param workspaceId - Workspace identity received on the wire.
+   * @returns the canonical directory path the registry holds for it.
+   * @throws RemoteError when the composition mounts no Workspace registry, or the identity names none.
    */
-  @Remote
-  readTeamDocument(workspaceFileScope: WorkspaceFileScope, signal: AbortSignal): TeamDocumentRead {
-    signal.throwIfAborted()
-    const projectRoot = findProjectRoot(workspaceFileScope.workspaceRoot)
-    if (projectRoot === undefined) return { path: null, document: null }
-    const path = teamDocumentPath(projectRoot)
-    return { path, document: this.readDocumentAt(path) ?? null }
+  private workspaceRoot(workspaceId: WorkspaceId): string {
+    const registry: WorkspaceRegistry | undefined = this.ctx.get('workspaceRegistry')
+    if (registry === undefined) {
+      throw new RemoteError(
+        'team-document/no-workspace-registry',
+        'this composition mounts no Workspace registry, so no Workspace identity resolves',
+        {},
+      )
+    }
+    const workspace = registry.get(workspaceId)
+    if (workspace === undefined) {
+      throw new RemoteError(
+        'team-document/unknown-workspace',
+        `no Workspace is registered as "${workspaceId}"`,
+        { workspaceId },
+      )
+    }
+    return workspace.path
   }
 
   /**
-   * List the Sessions a workspace team document can be edited for.
-   *
-   * A caller with no Session of its own — the plugin settings page, where no
-   * Session is live — still needs one identity to resolve a project root from.
-   * Only top-level Sessions qualify: a subagent child runs inside its parent's
-   * workspace, and listing one as a separate choice would offer the picker the
-   * same directory twice. A Session whose header carries no working directory
-   * is skipped, because the document Remote resolves a project root by walking
-   * up from that directory.
-   *
-   * The order key is the header's creation time. A durable Session's
-   * last-prompt time belongs to the GUI API session-list projection, which the
-   * headless composition does not mount, so it takes no part in this order and
-   * a candidate created earlier but used later ranks below this one.
+   * Read the workspace document of one registered Workspace.
+   * @param workspaceId - Workspace identity the Host resolves a project root from.
    * @param signal - caller cancellation.
-   * @returns at most the newest 20 candidates, newest-created first.
-   * @throws Error when the caller aborted.
+   * @returns the document path and its contents; both are null without a project root or a document.
+   * @throws RemoteError when the composition mounts no Workspace registry, or the identity names none.
    */
   @Remote
-  async listWorkspaceCandidates(signal: AbortSignal): Promise<readonly WorkspaceSessionCandidate[]> {
+  readTeamDocument(workspaceId: WorkspaceId, signal: AbortSignal): TeamDocumentRead {
     signal.throwIfAborted()
-    const records = await this.ctx.sessionQuery.listSessions(signal)
-    signal.throwIfAborted()
-    return records
-      .flatMap((record) => {
-        const { cwd, parentSession } = record.header
-        if (parentSession !== undefined || cwd === undefined || cwd === '') return []
-        return [{ sessionId: record.header.id, cwd, createdAt: record.header.createdAt }]
-      })
-      .sort((left, right) => right.createdAt - left.createdAt)
-      .slice(0, WORKSPACE_CANDIDATE_LIMIT)
+    const root = this.workspaceRoot(workspaceId)
+    const projectRoot = findProjectRoot(root)
+    if (projectRoot === undefined) return { path: null, document: null }
+    const path = teamDocumentPath(projectRoot)
+    return { path, document: this.readDocumentAt(path) ?? null }
   }
 
   /**
@@ -524,22 +515,23 @@ export class AgentTeamLlmSettings extends TypertRemoteService {
   }
 
   /**
-   * Validate and atomically write the workspace document for one Session's workspace.
+   * Validate and atomically write the workspace document of one registered Workspace.
    *
-   * The path is derived from the Session's workspace root, never from the wire.
-   * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
+   * The directory is resolved from the Workspace registry, never from the wire.
+   * @param workspaceId - Workspace identity the Host resolves a project root from.
    * @param document - document to validate and write.
    * @param signal - caller cancellation.
    * @returns the absolute path the document was written to.
-   * @throws RemoteError when the workspace root has no project root.
+   * @throws RemoteError when the composition mounts no Workspace registry, the identity names none, or the workspace has no project root.
    */
   @Remote
   async saveTeamDocument(
-    workspaceFileScope: WorkspaceFileScope, document: TeamDocument, signal: AbortSignal,
+    workspaceId: WorkspaceId, document: TeamDocument, signal: AbortSignal,
   ): Promise<TeamDocumentPath> {
     signal.throwIfAborted()
-    const root = workspaceFileScope.workspaceRoot
-    if (findProjectRoot(root) === undefined) {
+    const root = this.workspaceRoot(workspaceId)
+    const projectRoot = findProjectRoot(root)
+    if (projectRoot === undefined) {
       throw new RemoteError(
         'team-document/no-project-root', `"${root}" has no .git ancestor to own a team document`, { workspaceRoot: root },
       )
@@ -549,7 +541,7 @@ export class AgentTeamLlmSettings extends TypertRemoteService {
     } catch (cause) {
       if (cause instanceof TeamDocumentError) {
         throw new RemoteError(
-          'team-document/invalid', cause.message, { path: teamDocumentPath(root) }, { cause },
+          'team-document/invalid', cause.message, { path: teamDocumentPath(projectRoot) }, { cause },
         )
       }
       throw cause

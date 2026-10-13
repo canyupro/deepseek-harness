@@ -2,6 +2,7 @@
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ModelProviderGroup } from '@deepseek-ai/dsh-api-remotes/client'
+import type { WorkspaceId, WorkspaceSource, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {
   SettingsFormPathOp, SettingsFormScope, SettingsFormShell,
@@ -34,21 +35,16 @@ export type AgentTeamLlmScopeKey = 'global' | 'workspace'
 export type AgentTeamLlmWorkspaceStatus = 'loading' | 'ready' | 'unavailable' | 'error'
 
 /** Why the workspace layer has nothing to edit, when the card says so. */
-export type AgentTeamLlmWorkspaceReason = 'noSession' | 'noProjectRoot'
+export type AgentTeamLlmWorkspaceReason = 'noWorkspace' | 'noProjectRoot'
 
-/** One Session the Host offers as a possible workspace root for the card. */
+/** One Workspace the picker offers, as the sidebar lists it. */
 export interface AgentTeamLlmWorkspaceCandidate {
-  /** Session whose cwd the Host resolves a project root from. */
-  sessionId: SessionId
-  /** Working directory the Host reported for the Session. */
-  cwd: string
-  /**
-   * Creation time of the Session header; the Host ranks candidates by it and
-   * returns them newest first. When a Session was last used belongs to the GUI
-   * API's session-list projection, which a headless composition does not mount,
-   * so a long-used older Session can rank below a newer one.
-   */
-  createdAt: number
+  /** Workspace identity the Host resolves a project root from. */
+  workspaceId: WorkspaceId
+  /** Title the sidebar shows for the Workspace. */
+  title: string
+  /** Canonical directory path the Host registered. */
+  path: string
 }
 
 /** The workspace layer as the card knows it. */
@@ -60,16 +56,14 @@ export interface AgentTeamLlmWorkspaceState {
   /** Host refusal text of the last read or write; empty while the layer answers. */
   error: string | undefined
   /**
-   * Which side of the boundary an unavailable layer stopped at: the client found
-   * no session to resolve, or the Host resolved that session to no project root.
+   * Which side of the boundary an unavailable layer stopped at: the sidebar
+   * holds no Workspace to resolve, or the Host resolved one to no project root.
    */
   reason: AgentTeamLlmWorkspaceReason | undefined
-  /** Whether the Host has been asked for the sessions it can offer as workspaces. */
-  candidatesStatus: 'idle' | 'loading' | 'ready' | 'error'
-  /** Sessions the Host offered, newest first; empty until it answers. */
+  /** Workspaces the sidebar lists, in its order; empty until the client answers. */
   candidates: readonly AgentTeamLlmWorkspaceCandidate[]
-  /** The Session the layer resolves; undefined while none does. */
-  sessionId: SessionId | undefined
+  /** The Workspace the layer resolves; undefined while none does. */
+  workspaceId: WorkspaceId | undefined
 }
 
 /** One exact provider/model route as the Host stores it. */
@@ -218,10 +212,10 @@ export interface AgentTeamLlmCardFace {
   setMemberEffort: (index: number, reasoningEffort: string) => void
   /** Retry the adapter directory. */
   retryCatalog: () => void
-  /** Read the workspace document again after a refusal or a new Session scope. */
+  /** Read the workspace document again after a refusal or a new Workspace scope. */
   retryWorkspace: () => void
-  /** Resolve the workspace layer from one offered Session, dropping any staged workspace draft. */
-  setWorkspaceSession: (sessionId: SessionId) => void
+  /** Resolve the workspace layer from one Workspace the sidebar lists, dropping any staged workspace draft. */
+  setWorkspace: (workspaceId: WorkspaceId) => void
   /** Persist every staged field as one revision-fenced mutation. */
   save: () => void
   /** Drop the staged routing document. */
@@ -408,10 +402,10 @@ export class AgentTeamLlmCardController {
   private workspaceStatus: AgentTeamLlmWorkspaceStatus = 'loading'
   private workspaceError: string | undefined
   private workspaceReason: AgentTeamLlmWorkspaceReason | undefined
-  private workspaceCandidates: readonly AgentTeamLlmWorkspaceCandidate[] = []
-  private workspaceCandidatesStatus: AgentTeamLlmWorkspaceState['candidatesStatus'] = 'idle'
-  private selectedSession: SessionId | undefined
-  private resolvedSession: SessionId | undefined
+  private workspaceRows: readonly WorkspaceView[] = []
+  private workspacePhase: 'pending' | 'ready' = 'pending'
+  private selectedWorkspace: WorkspaceId | undefined
+  private resolvedWorkspace: WorkspaceId | undefined
   private readingWorkspace = false
   private saving = false
   private failed = false
@@ -420,10 +414,10 @@ export class AgentTeamLlmCardController {
   private saveGeneration = 0
   private catalogGeneration = 0
   private workspaceGeneration = 0
-  private candidatesGeneration = 0
   private readonly lifetime = new AbortController()
   private readonly store: SnapshotStore<AgentTeamLlmCardState>
   private readonly unsubscribe: () => void
+  private readonly unsubscribeWorkspaces: () => void
 
   /**
    * @param scope - bound `agent-team-llm-settings` configuration form.
@@ -431,14 +425,17 @@ export class AgentTeamLlmCardController {
    * answers the Host model catalog.
    * @param documents - the Host `agentTeamLlm` Remote slice reading and writing
    * the workspace team document.
-   * @param workspaceSession - reader for the Session whose workspace root backs
-   * the workspace layer; undefined while no Session project is open.
+   * @param workspaceSession - reader for the Session whose Workspace backs the
+   * workspace layer; undefined while no Session project is open.
+   * @param workspaces - the sidebar's Workspace projection, which is the only
+   * source of the rows this card offers: the picker lists what the sidebar lists.
    */
   constructor(
     private readonly scope: SettingsFormScope<AgentTeamLlmSettings>,
     private readonly ctx: ClientContext,
     private readonly documents: AgentTeamLlmTeamDocuments,
     private readonly workspaceSession: () => SessionId | undefined,
+    private readonly workspaces: WorkspaceSource,
   ) {
     this.store = createSnapshotStore(this.projection())
     this.unsubscribe = scope.subscribe(() => {
@@ -450,6 +447,10 @@ export class AgentTeamLlmCardController {
       }
       this.publish()
     })
+    // The picker lists the sidebar's Workspaces, so every row the operator adds
+    // or removes there reaches this card through the same projection.
+    this.unsubscribeWorkspaces = this.workspaces.subscribe(() => { this.syncWorkspaces() })
+    this.syncWorkspaces()
     // The default and preset controls render while routing is disabled too, so
     // their route choices need the directory without waiting for the switch.
     void this.loadCatalog()
@@ -461,16 +462,16 @@ export class AgentTeamLlmCardController {
     void this.loadWorkspace()
   }
 
-  /** Stop observing settings and suppress late directory/read/write settlements. */
+  /** Stop observing settings, the Workspace projection, and suppress late settlements. */
   dispose(): void {
     this.disposed = true
     this.saveGeneration += 1
     this.catalogGeneration += 1
     this.memberPermissionsGeneration += 1
     this.workspaceGeneration += 1
-    this.candidatesGeneration += 1
     this.lifetime.abort(new Error('client-ui-agent-team-llm-settings: card disposed'))
     this.unsubscribe()
+    this.unsubscribeWorkspaces()
   }
 
   /**
@@ -504,7 +505,7 @@ export class AgentTeamLlmCardController {
       setMemberEffort: (index, reasoningEffort) => { this.setMemberEffort(index, reasoningEffort) },
       retryCatalog: () => { void this.loadCatalog() },
       retryWorkspace: () => { void this.loadWorkspace() },
-      setWorkspaceSession: (sessionId) => { this.setWorkspaceSession(sessionId) },
+      setWorkspace: (workspaceId) => { this.setWorkspace(workspaceId) },
       save: () => { void this.save() },
       discard: () => { this.discard() },
     }
@@ -919,8 +920,8 @@ export class AgentTeamLlmCardController {
 
   /** Persist the staged workspace document as one Host write. */
   private async saveWorkspace(routing: AgentTeamLlmRouting): Promise<void> {
-    const sessionId = this.currentSession()
-    if (sessionId === undefined || this.workspaceStatus !== 'ready') return
+    const workspaceId = this.currentWorkspace()
+    if (workspaceId === undefined || this.workspaceStatus !== 'ready') return
     const generation = this.saveGeneration
     const document = agentTeamLlmTeamDocumentOf({
       enabled: routing.enabled,
@@ -933,7 +934,7 @@ export class AgentTeamLlmCardController {
     this.saving = true
     this.dropConflicted()
     this.publish()
-    const result = await this.documents.saveTeamDocument(sessionId, document, this.lifetime.signal)
+    const result = await this.documents.saveTeamDocument(workspaceId, document, this.lifetime.signal)
     if (generation !== this.saveGeneration) return
     this.saving = false
     if (result.ok) {
@@ -981,7 +982,7 @@ export class AgentTeamLlmCardController {
     void this.loadCatalog()
   }
 
-  /** Drop Host-specific candidates and drafts, then reload after reconnecting. */
+  /** Drop Host-specific rows and drafts, then reload after reconnecting. */
   resetConnection(): void {
     if (this.disposed) return
     this.saveGeneration += 1
@@ -994,12 +995,7 @@ export class AgentTeamLlmCardController {
     // A read still crossing the wire answers for the previous connection.
     this.workspaceGeneration += 1
     this.readingWorkspace = false
-    // The offered sessions belong to the connection that is gone.
-    this.candidatesGeneration += 1
-    this.workspaceCandidates = []
-    this.workspaceCandidatesStatus = 'idle'
-    this.selectedSession = undefined
-    this.resolvedSession = undefined
+    this.resolvedWorkspace = undefined
     this.refreshCatalog()
     this.refreshMemberPermissions()
     void this.loadWorkspace()
@@ -1046,81 +1042,67 @@ export class AgentTeamLlmCardController {
   }
 
   /**
-   * The Session the workspace layer resolves, in order: the one the live session
-   * table holds for the main view, then the one the operator picked from the
-   * offered candidates, then the newest candidate. A live main-view Session is
-   * what the operator is looking at, so an offered candidate never displaces it.
-   * @returns the Session identity, or undefined while none resolves.
+   * The Workspace the workspace layer resolves, in order: the row the operator
+   * picked, then the row accounting for the live main-view Session, then the
+   * first row the sidebar lists. A live Session is what the operator is looking
+   * at, so it decides the default; an explicit pick still outranks it.
+   * @returns the Workspace identity, or undefined while none resolves.
    */
-  private currentSession(): SessionId | undefined {
+  private currentWorkspace(): WorkspaceId | undefined {
+    if (this.selectedWorkspace !== undefined) return this.selectedWorkspace
     const live = this.workspaceSession()
-    if (live !== undefined) return live
-    if (this.selectedSession !== undefined) return this.selectedSession
-    return this.workspaceCandidates[0]?.sessionId
+    if (live !== undefined) {
+      const owning = this.workspaceRows.find(row => row.sessionIds.includes(live))
+      if (owning !== undefined) return owning.workspaceId
+    }
+    return this.workspaceRows[0]?.workspaceId
   }
 
   /**
-   * Ask the Host which Sessions it can resolve a project root from. The card
-   * asks only when the live session table holds nothing, so the settings page
-   * still offers workspaces while a real Session outranks every candidate.
+   * Adopt the Workspace rows the sidebar publishes and re-resolve the layer when
+   * the resolved row moved. The rows are client state rather than a Host reply,
+   * so a Workspace the operator just added is offered before any request.
    */
-  private async loadWorkspaceCandidates(): Promise<void> {
-    if (this.disposed || this.workspaceCandidatesStatus === 'loading') return
-    const generation = (this.candidatesGeneration += 1)
-    this.workspaceCandidatesStatus = 'loading'
-    this.publish()
-    const result = await this.documents.listWorkspaceCandidates(this.lifetime.signal)
-    if (generation !== this.candidatesGeneration || this.disposed) return
-    if (result.ok) {
-      this.workspaceCandidates = result.value
-      this.workspaceCandidatesStatus = 'ready'
-      // A selection the Host no longer offers would resolve a stale document.
-      if (this.selectedSession !== undefined
-        && !result.value.some(entry => entry.sessionId === this.selectedSession)) {
-        this.selectedSession = undefined
-      }
+  private syncWorkspaces(): void {
+    if (this.disposed) return
+    const snapshot = this.workspaces.getSnapshot()
+    this.workspacePhase = snapshot.phase
+    this.workspaceRows = snapshot.items
+    // A selection the sidebar no longer lists would resolve a document the Host
+    // cannot name, so the default takes over again.
+    if (this.selectedWorkspace !== undefined
+      && !snapshot.items.some(row => row.workspaceId === this.selectedWorkspace)) {
+      this.selectedWorkspace = undefined
+    }
+    if (this.currentWorkspace() === this.resolvedWorkspace) {
       this.publish()
       return
     }
-    // A refused list is an error in its own right; reporting it as "no session"
-    // would blame the wrong boundary.
-    this.workspaceCandidates = []
-    this.workspaceCandidatesStatus = 'error'
-    this.workspaceStatus = 'error'
-    this.workspaceError = result.error.message
-    this.workspaceReason = undefined
-    this.publish()
+    this.drafts.delete('workspace')
+    void this.loadWorkspace()
   }
 
   private async loadWorkspace(): Promise<void> {
     if (this.disposed || this.readingWorkspace) return
-    let sessionId = this.currentSession()
-    // Only a ready list settles the session; an idle or refused list is asked
-    // first, because a refusal stays published until a retry reaches the Host.
-    if (sessionId === undefined && this.workspaceCandidatesStatus !== 'ready') {
-      await this.loadWorkspaceCandidates()
-      if (this.disposed) return
-      sessionId = this.currentSession()
-    }
-    if (sessionId === undefined) {
-      // The candidate list already published its own refusal; keep it.
-      if (this.workspaceCandidatesStatus === 'error') return
-      this.workspaceStatus = 'unavailable'
+    const workspaceId = this.currentWorkspace()
+    if (workspaceId === undefined) {
+      // An unanswered projection is not an empty sidebar; the list may still arrive.
+      this.workspaceStatus = this.workspacePhase === 'ready' ? 'unavailable' : 'loading'
       this.workspacePath = undefined
       this.workspaceError = undefined
-      this.workspaceReason = 'noSession'
-      this.resolvedSession = undefined
+      this.workspaceReason = this.workspacePhase === 'ready' ? 'noWorkspace' : undefined
+      this.resolvedWorkspace = undefined
       this.publish()
       return
     }
-    this.resolvedSession = sessionId
+    this.resolvedWorkspace = workspaceId
     const generation = (this.workspaceGeneration += 1)
     this.readingWorkspace = true
     this.workspaceStatus = 'loading'
     this.workspaceError = undefined
     this.workspaceReason = undefined
     this.publish()
-    const result = await this.documents.readTeamDocument(sessionId, this.lifetime.signal)
+    const result = await this.documents.readTeamDocument(workspaceId, this.lifetime.signal)
     if (generation !== this.workspaceGeneration) return
     this.readingWorkspace = false
     if (!result.ok) {
@@ -1131,7 +1113,7 @@ export class AgentTeamLlmCardController {
       return
     }
     if (result.value.path === null) {
-      // No project root backs this Session, so there is no workspace layer to edit.
+      // No project root backs this Workspace, so there is no workspace layer to edit.
       this.workspaceStatus = 'unavailable'
       this.workspaceDocument = undefined
       this.workspacePath = undefined
@@ -1147,14 +1129,14 @@ export class AgentTeamLlmCardController {
   }
 
   /**
-   * Resolve the workspace layer from one offered Session. The staged workspace
-   * draft belongs to the document the operator was just looking at, so it is
-   * dropped rather than carried into another project's file.
-   * @param sessionId - Session the operator chose.
+   * Resolve the workspace layer from one Workspace the sidebar lists. The staged
+   * workspace draft belongs to the document the operator was just looking at, so
+   * it is dropped rather than carried into another project's file.
+   * @param workspaceId - Workspace the operator chose.
    */
-  private setWorkspaceSession(sessionId: SessionId): void {
+  private setWorkspace(workspaceId: WorkspaceId): void {
     if (this.disposed || this.saving || this.readingWorkspace) return
-    this.selectedSession = sessionId
+    this.selectedWorkspace = workspaceId
     this.drafts.delete('workspace')
     void this.loadWorkspace()
   }
@@ -1195,9 +1177,12 @@ export class AgentTeamLlmCardController {
         path: this.workspacePath,
         error: this.workspaceError,
         reason: this.workspaceReason,
-        candidatesStatus: this.workspaceCandidatesStatus,
-        candidates: this.workspaceCandidates,
-        sessionId: this.resolvedSession,
+        candidates: this.workspaceRows.map(row => ({
+          workspaceId: row.workspaceId,
+          title: row.title,
+          path: row.path,
+        })),
+        workspaceId: this.resolvedWorkspace,
       },
       enabled: routing.enabled,
       candidates,

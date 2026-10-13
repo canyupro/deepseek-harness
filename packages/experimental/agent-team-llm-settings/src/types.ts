@@ -1,10 +1,6 @@
 /** Wire and value types for the workspace-owned Agent Teams document. */
 
 import type { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-// Subpath only: the package root augments `Context.sessions` with the Host
-// SessionStore, which would replace the Client `ISessions` declaration in
-// consumers that compile this file.
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 /** How a fixed member's Session starts. */
 export type TeamMemberContext = 'fresh' | 'fork'
@@ -133,26 +129,15 @@ export interface TeamDocumentPath {
   readonly path: string
 }
 
-/** One durable Session a workspace team document can be edited for. */
-export interface WorkspaceSessionCandidate {
-  /** Session identity the workspace Remote resolves a project root from. */
-  readonly sessionId: SessionId
-  /** Working directory the Session ran in; empty when its header omits one. */
-  readonly cwd: string
-  /**
-   * Ordering key for the picker, taken from the session header's creation
-   * time: a durable session's last-prompt time belongs to the GUI API
-   * session-list projection, which the headless composition does not mount, so
-   * a session created earlier but used later sorts ahead of this one.
-   */
-  readonly createdAt: number
-}
-
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
-    /** The Session's workspace root has no `.git` ancestor, so it owns no document path. */
+    /** The Workspace directory has no `.git` ancestor, so it owns no document path. */
     'team-document/no-project-root': { readonly workspaceRoot: string }
     /** The submitted document is not a valid version-1 document; its message names the field. */
     'team-document/invalid': { readonly path: string }
+    /** The composition mounts no Workspace registry, so no Workspace identity resolves. */
+    'team-document/no-workspace-registry': Record<string, never>
+    /** The named Workspace is not registered. */
+    'team-document/unknown-workspace': { readonly workspaceId: string }
   }
 }

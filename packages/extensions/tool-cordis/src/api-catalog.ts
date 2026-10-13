@@ -350,17 +350,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['TeamDocumentError when the document is malformed or over the roster cap.', 'Error when no ancestor of `root` is a project root.'],
       },
       {
-        signature: '@Remote readTeamDocument(workspaceFileScope: WorkspaceFileScope, signal: AbortSignal): TeamDocumentRead',
-        description: 'Read the workspace document for one Session\'s workspace.',
-        parameters: [{ name: 'workspaceFileScope', description: 'header-derived workspace root for the Session identity on the wire.' }, { name: 'signal', description: 'caller cancellation.' }],
+        signature: '@Remote readTeamDocument(workspaceId: WorkspaceId, signal: AbortSignal): TeamDocumentRead',
+        description: 'Read the workspace document of one registered Workspace.',
+        parameters: [{ name: 'workspaceId', description: 'Workspace identity the Host resolves a project root from.' }, { name: 'signal', description: 'caller cancellation.' }],
         returns: 'the document path and its contents; both are null without a project root or a document.',
-      },
-      {
-        signature: '@Remote async listWorkspaceCandidates(signal: AbortSignal): Promise<readonly WorkspaceSessionCandidate[]>',
-        description: 'List the Sessions a workspace team document can be edited for.\n\nA caller with no Session of its own — the plugin settings page, where no Session is live — still needs one identity to resolve a project root from. Only top-level Sessions qualify: a subagent child runs inside its parent\'s workspace, and listing one as a separate choice would offer the picker the same directory twice. A Session whose header carries no working directory is skipped, because the document Remote resolves a project root by walking up from that directory.\n\nThe order key is the header\'s creation time. A durable Session\'s last-prompt time belongs to the GUI API session-list projection, which the headless composition does not mount, so it takes no part in this order and a candidate created earlier but used later ranks below this one.',
-        parameters: [{ name: 'signal', description: 'caller cancellation.' }],
-        returns: 'at most the newest 20 candidates, newest-created first.',
-        throws: ['Error when the caller aborted.'],
+        throws: ['RemoteError when the composition mounts no Workspace registry, or the identity names none.'],
       },
       {
         signature: '@Remote listMemberPermissionPresets(signal: AbortSignal): TeamMemberPermissionCatalog',
@@ -370,11 +364,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['Error when the caller aborted.'],
       },
       {
-        signature: '@Remote async saveTeamDocument( workspaceFileScope: WorkspaceFileScope, document: TeamDocument, signal: AbortSignal, ): Promise<TeamDocumentPath>',
-        description: 'Validate and atomically write the workspace document for one Session\'s workspace.\n\nThe path is derived from the Session\'s workspace root, never from the wire.',
-        parameters: [{ name: 'workspaceFileScope', description: 'header-derived workspace root for the Session identity on the wire.' }, { name: 'document', description: 'document to validate and write.' }, { name: 'signal', description: 'caller cancellation.' }],
+        signature: '@Remote async saveTeamDocument( workspaceId: WorkspaceId, document: TeamDocument, signal: AbortSignal, ): Promise<TeamDocumentPath>',
+        description: 'Validate and atomically write the workspace document of one registered Workspace.\n\nThe directory is resolved from the Workspace registry, never from the wire.',
+        parameters: [{ name: 'workspaceId', description: 'Workspace identity the Host resolves a project root from.' }, { name: 'document', description: 'document to validate and write.' }, { name: 'signal', description: 'caller cancellation.' }],
         returns: 'the absolute path the document was written to.',
-        throws: ['RemoteError when the workspace root has no project root.'],
+        throws: ['RemoteError when the composition mounts no Workspace registry, the identity names none, or the workspace has no project root.'],
       },
     ],
   },
@@ -8545,10 +8539,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceRenameRequest',
     declaration: 'export interface WorkspaceRenameRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly title: string;\n}',
-  },
-  {
-    name: 'WorkspaceSessionCandidate',
-    declaration: 'export interface WorkspaceSessionCandidate {\n    readonly sessionId: SessionId;\n    readonly cwd: string;\n    readonly createdAt: number;\n}',
   },
   {
     name: 'WorkspaceUnarchiveSessionRequest',

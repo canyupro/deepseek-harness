@@ -5,11 +5,12 @@
  * This is the composition path rather than a hand-built one: the contribution
  * object comes from the Host package's generated `/remote` export and is handed
  * to the same `mountAgentTeamLlmSettingsCard` the plugin uses, so the entry
- * function and the Session-selection fallback are exercised as shipped.
+ * function and the Workspace-default fallback are exercised as shipped.
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
+import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TypertRemoteContribution, TypertRemoteEvent } from '@deepseek-ai/dsh-typert-protocol'
 import { RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
@@ -18,6 +19,8 @@ import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { apply as settingsApply, inject as settingsInject } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { apply } from '../src/client/index.ts'
+import type { AgentTeamLlmCardFace } from '../src/client/agent-team-llm-card-controller.ts'
+import { workspaceRow, workspaceSource } from './workspace-source.client.ts'
 import teamRemote from '@deepseek-ai/dsh-experimental-agent-team-llm-settings/remote'
 
 /** One Host view of a served namespace. */
@@ -37,8 +40,8 @@ interface Options {
   catalog?: () => Promise<unknown>
   /** The project document answer. */
   read?: () => Promise<unknown>
-  /** The offered workspace candidates. */
-  listWorkspaceCandidates?: () => Promise<unknown>
+  /** Workspaces the sidebar lists, in its order. */
+  workspaces?: readonly WorkspaceView[]
 }
 
 /** A browser composition serving the settings namespace. */
@@ -84,18 +87,15 @@ async function bench(options: Options = {}) {
   const readTeamDocument = vi.fn<(...args: never[]) => Promise<unknown>>(options.read ?? (() => Promise.resolve({
     ok: true as const, value: { path: '/project/.dsh/team.json', document: { version: 1 as const } },
   })))
-  const listWorkspaceCandidates = vi.fn<(...args: never[]) => Promise<unknown>>(
-    options.listWorkspaceCandidates ?? (() => Promise.resolve({ ok: true as const, value: [] })),
-  )
   const listMemberPermissionPresets = vi.fn(() => Promise.resolve({
     ok: true as const, value: { presets: [], custom: { name: 'custom', label: 'custom' } },
   }))
   ctx.provide('remote.agentTeamLlm', {
     readTeamDocument,
     saveTeamDocument: vi.fn(() => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } })),
-    listWorkspaceCandidates,
     listMemberPermissionPresets,
   })
+  ctx.provide('workspaces', { list: workspaceSource(options.workspaces ?? []) } as never)
   ctx.provide('sessions', {
     list: {
       getSnapshot: () => ({
@@ -114,10 +114,16 @@ async function bench(options: Options = {}) {
     children: { 'plugins.item': { kind: 'list', scope: 'root' } },
   } as never, () => null)
   return {
-    ctx, mounted, slots, readTeamDocument, listWorkspaceCandidates, listMemberPermissionPresets,
+    ctx, mounted, slots, readTeamDocument, listMemberPermissionPresets,
     // Forward one Host event to the listeners the card registered for it.
     emit: (event: TypertRemoteEvent) => { for (const listener of listeners.get(event) ?? []) listener() },
   }
+}
+
+/** The card hooks the page registered, which is where the workspace layer is read. */
+function faceOf(slots: SlotRegistry): Pick<AgentTeamLlmCardFace, 'hooks'> {
+  const entry = slots.entries('plugins.item')[0]!
+  return (entry.inject as () => Pick<AgentTeamLlmCardFace, 'hooks'>)()
 }
 
 describe('shipped browser entry', () => {
@@ -139,70 +145,71 @@ describe('shipped browser entry', () => {
     expect(slots.entries('plugins.item')).toHaveLength(0)
   })
 
-  it('falls back to the Host\'s newest-created candidate when no view retains one', async () => {
-    const listWorkspaceCandidates = vi.fn(() => Promise.resolve({
-      ok: true as const,
-      value: [
-        { sessionId: SessionId('new'), cwd: '/projects/new', createdAt: 20 },
-        { sessionId: SessionId('old'), cwd: '/projects/old', createdAt: 10 },
+  it('reads the first Workspace the sidebar lists when no view retains a Session', async () => {
+    const { ctx, readTeamDocument } = await bench({
+      // No main view retains a session, so nothing outranks the sidebar order:
+      // the card reads the first Workspace the sidebar lists.
+      rows: [row('catalog-only', 2, {})],
+      workspaces: [
+        workspaceRow('ws-new', 'new', '/projects/new'),
+        workspaceRow('ws-old', 'old', '/projects/old'),
       ],
-    }))
-    const { ctx, readTeamDocument } = await bench({
-      // No main view retains a session, so the browser table resolves nothing and
-      // the card falls back to what the Host offers. The Host ranks by header
-      // creation time, so the newer-created candidate is the subject it reads.
-      rows: [row('catalog-only', 2, {})],
-      listWorkspaceCandidates,
     })
 
     const dispose = await apply(ctx)
 
     await vi.waitFor(() => { expect(readTeamDocument).toHaveBeenCalled() })
-    expect(listWorkspaceCandidates).toHaveBeenCalledOnce()
-    expect(readTeamDocument.mock.calls[0]?.[0]).toBe('new')
+    expect(readTeamDocument.mock.calls[0]?.[0]).toBe('ws-new')
 
     await dispose()
   })
 
-  it('never reads a project document while the Host offers no candidate', async () => {
-    const listWorkspaceCandidates = vi.fn(() => Promise.resolve({ ok: true as const, value: [] }))
+  it('reads the first sidebar Workspace while the catalog holds no Session at all', async () => {
     const { ctx, readTeamDocument } = await bench({
-      rows: [row('catalog-only', 2, {})],
-      listWorkspaceCandidates,
+      rows: [],
+      workspaces: [workspaceRow('ws-only', 'only', '/projects/only')],
     })
 
     const dispose = await apply(ctx)
 
-    await vi.waitFor(() => { expect(listWorkspaceCandidates).toHaveBeenCalled() })
-    // A retained session is what the catalog row would have supplied; without
-    // one and with an empty candidate list, the layer stays unavailable.
-    expect(readTeamDocument).not.toHaveBeenCalled()
-
-    await dispose()
-  })
-
-  it('reads the Session the main view retains in preference to the newest', async () => {
-    const { ctx, readTeamDocument } = await bench({
-      rows: [row('retained', 1, { mainView: 1 }), row('newer', 9, {})],
-    })
-
-    const dispose = await apply(ctx)
-
+    // The workspace layer needs a Workspace, not a Session, so an empty Session
+    // catalog leaves the sidebar's own rows to decide.
     await vi.waitFor(() => { expect(readTeamDocument).toHaveBeenCalled() })
-    expect(readTeamDocument.mock.calls[0]?.[0]).toBe('retained')
+    expect(readTeamDocument.mock.calls[0]?.[0]).toBe('ws-only')
 
     await dispose()
   })
 
-  it('reads no project document while the catalog holds no Session at all', async () => {
-    const { ctx, slots, readTeamDocument } = await bench({ rows: [] })
+  it('never reads a project document while the sidebar lists no Workspace', async () => {
+    const { ctx, readTeamDocument, slots } = await bench({ rows: [row('catalog-only', 2, {})], workspaces: [] })
 
     const dispose = await apply(ctx)
 
     await vi.waitFor(() => { expect(slots.entries('plugins.item')).toHaveLength(1) })
-    // With no Session there is no workspace root to ask about, so the card
-    // greys the layer out rather than inventing one.
+    // There is no row to resolve, so the layer is unavailable for the reason an
+    // empty sidebar names rather than for a refused read.
     expect(readTeamDocument).not.toHaveBeenCalled()
+    expect(faceOf(slots).hooks.agentTeamLlmCard.getSnapshot().workspace)
+      .toMatchObject({ status: 'unavailable', reason: 'noWorkspace' })
+
+    await dispose()
+  })
+
+  it('reads the Workspace accounting for the retained main-view Session, not the first row', async () => {
+    const { ctx, readTeamDocument } = await bench({
+      rows: [row('retained', 1, { mainView: 1 }), row('newer', 9, {})],
+      workspaces: [
+        workspaceRow('ws-first', 'first', '/projects/first'),
+        workspaceRow('ws-retained', 'retained', '/projects/retained', [SessionId('retained')]),
+      ],
+    })
+
+    const dispose = await apply(ctx)
+
+    await vi.waitFor(() => { expect(readTeamDocument).toHaveBeenCalled() })
+    // The retained Session is what the operator is looking at, so its Workspace
+    // outranks the sidebar's own first row.
+    expect(readTeamDocument.mock.calls.map(call => call[0])).toEqual(['ws-retained'])
 
     await dispose()
   })

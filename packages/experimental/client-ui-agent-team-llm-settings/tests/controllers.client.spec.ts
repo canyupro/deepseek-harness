@@ -7,9 +7,18 @@ import {
   type AgentTeamLlmSettings,
 } from '../src/client/agent-team-llm-card-controller.ts'
 import type { AgentTeamLlmTeamDocumentRead, AgentTeamLlmTeamDocuments } from '../src/client/team-document.ts'
+import { workspaceRow, workspaceSource, type ScriptedWorkspaces } from './workspace-source.client.ts'
 
-/** The Session whose workspace root the Host resolves for the workspace layer. */
+/** The Session whose Workspace backs the workspace layer. */
 const SESSION = SessionId('session-1')
+
+/** The one Workspace the sidebar lists, accounting for {@link SESSION}. */
+const SIDEBAR = [workspaceRow('ws-1', 'project', '/project', [SESSION])]
+
+/** The sidebar projection the card reads its picker rows from. */
+function sidebar(): ScriptedWorkspaces {
+  return workspaceSource(SIDEBAR)
+}
 
 /** A workspace document slice answering every read with `document` at `path`. */
 function noTeamDocuments(read: Partial<AgentTeamLlmTeamDocumentRead> = {}): AgentTeamLlmTeamDocuments {
@@ -18,7 +27,6 @@ function noTeamDocuments(read: Partial<AgentTeamLlmTeamDocumentRead> = {}): Agen
       ok: true as const, value: { path: '/project/.dsh/team.json', document: { version: 1 as const }, ...read },
     }),
     saveTeamDocument: () => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } }),
-    listWorkspaceCandidates: () => Promise.resolve({ ok: true as const, value: [] }),
     listMemberPermissionPresets: () => Promise.resolve({
       ok: true as const, value: { presets: [], custom: { name: 'custom', label: 'custom' } },
     }),
@@ -113,7 +121,7 @@ function bench(
   host.publish({ status: 'ready', writable: true, revision: 1, value: { ...EMPTY, ...value }, user: {} })
   const directory = modelsApi({ groups })
   const controller = new AgentTeamLlmCardController(
-    host.scope, directory.ctx, noTeamDocuments(), () => SESSION,
+    host.scope, directory.ctx, noTeamDocuments(), () => SESSION, sidebar(),
   )
   const face = controller.inject()
   const state = () => face.hooks.agentTeamLlmCard.getSnapshot()
@@ -202,7 +210,7 @@ describe('AgentTeamLlmCardController', () => {
   it('starts an empty draft when a ready test scope has no decoded value', () => {
     const host = stubConfigForm<AgentTeamLlmSettings>()
     host.publish({ status: 'ready', writable: true, revision: 0, value: undefined })
-    const controller = new AgentTeamLlmCardController(host.scope, modelsApi().ctx, noTeamDocuments(), () => SESSION)
+    const controller = new AgentTeamLlmCardController(host.scope, modelsApi().ctx, noTeamDocuments(), () => SESSION, sidebar())
     const face = controller.inject()
 
     face.toggleEnabled()
@@ -326,7 +334,7 @@ describe('AgentTeamLlmCardController', () => {
     const host = stubConfigForm<AgentTeamLlmSettings>()
     host.publish({ status: 'ready', writable: true, value: EMPTY, user: {} })
     const directory = modelsApi({ error: 'offline' })
-    const controller = new AgentTeamLlmCardController(host.scope, directory.ctx, noTeamDocuments(), () => SESSION)
+    const controller = new AgentTeamLlmCardController(host.scope, directory.ctx, noTeamDocuments(), () => SESSION, sidebar())
     const face = controller.inject()
     const state = () => face.hooks.agentTeamLlmCard.getSnapshot()
 
@@ -344,7 +352,7 @@ describe('AgentTeamLlmCardController', () => {
         ok: true, value: { groups: [{ id: 'beta', name: 'Beta', models: [{ id: 'new', name: 'New' }] }], failures: [] },
       })
     const controller = new AgentTeamLlmCardController(
-      host.scope, ctxWith({ session: { modelCatalog: models } }), noTeamDocuments(), () => SESSION,
+      host.scope, ctxWith({ session: { modelCatalog: models } }), noTeamDocuments(), () => SESSION, sidebar(),
     )
     const face = controller.inject()
     const state = () => face.hooks.agentTeamLlmCard.getSnapshot()
@@ -458,7 +466,7 @@ describe('AgentTeamLlmCardController', () => {
       return true
     })
     const controller = new AgentTeamLlmCardController(
-      { ...host.scope, mutate }, catalog.ctx, noTeamDocuments(), () => SESSION,
+      { ...host.scope, mutate }, catalog.ctx, noTeamDocuments(), () => SESSION, sidebar(),
     )
     const face = controller.inject()
     const state = () => face.hooks.agentTeamLlmCard.getSnapshot()
@@ -486,7 +494,7 @@ describe('AgentTeamLlmCardController', () => {
     const pending = deferred<never>()
     const models = vi.fn(() => pending.promise)
     const controller = new AgentTeamLlmCardController(
-      host.scope, ctxWith({ session: { modelCatalog: models } }), noTeamDocuments(), () => SESSION,
+      host.scope, ctxWith({ session: { modelCatalog: models } }), noTeamDocuments(), () => SESSION, sidebar(),
     )
     const face = controller.inject()
 
@@ -502,7 +510,7 @@ describe('AgentTeamLlmCardController', () => {
   it('ignores writes while read-only and scope notifications after disposal', () => {
     const host = stubConfigForm<AgentTeamLlmSettings>()
     host.publish({ status: 'ready', writable: false, value: EMPTY, user: {} })
-    const controller = new AgentTeamLlmCardController(host.scope, modelsApi().ctx, noTeamDocuments(), () => SESSION)
+    const controller = new AgentTeamLlmCardController(host.scope, modelsApi().ctx, noTeamDocuments(), () => SESSION, sidebar())
     const face = controller.inject()
 
     face.toggleEnabled()
@@ -557,7 +565,7 @@ describe('AgentTeamLlmCardController', () => {
       })
     const controller = new AgentTeamLlmCardController(
       host.scope, modelsApi().ctx,
-      { ...noTeamDocuments(), listMemberPermissionPresets: list }, () => SESSION,
+      { ...noTeamDocuments(), listMemberPermissionPresets: list }, () => SESSION, sidebar(),
     )
     const face = controller.inject()
     const state = () => face.hooks.agentTeamLlmCard.getSnapshot()
@@ -583,7 +591,7 @@ describe('AgentTeamLlmCardController', () => {
     }))
     const controller = new AgentTeamLlmCardController(
       host.scope, modelsApi().ctx,
-      { ...noTeamDocuments(), listMemberPermissionPresets: list }, () => SESSION,
+      { ...noTeamDocuments(), listMemberPermissionPresets: list }, () => SESSION, sidebar(),
     )
     controller.inject()
 

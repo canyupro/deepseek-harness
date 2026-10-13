@@ -12,14 +12,17 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { stubConfigForm } from '@deepseek-ai/dsh-client-test-runtime'
 import {
   AgentTeamLlmCardController, type AgentTeamLlmCardState, type AgentTeamLlmSettings,
-  type AgentTeamLlmWorkspaceCandidate,
 } from '../src/client/agent-team-llm-card-controller.ts'
 import type { AgentTeamLlmTeamDocument, AgentTeamLlmTeamDocuments } from '../src/client/team-document.ts'
-
-type WorkspaceSessionCandidate = AgentTeamLlmWorkspaceCandidate
+import { workspaceRow, workspaceSource, type ScriptedWorkspaces } from './workspace-source.client.ts'
 
 const SESSION = SessionId('session-1')
 const ALPHA = [{ id: 'alpha', name: 'Alpha API', models: [{ id: 'fast', name: 'Fast' }, { id: 'deep', name: 'Deep' }] }]
+
+/** The Workspace the sidebar lists first, accounting for {@link SESSION}. */
+const SIDEBAR_ALPHA = workspaceRow('ws-alpha', 'alpha', '/projects/alpha', [SESSION])
+/** A second Workspace the picker can switch to. */
+const SIDEBAR_BETA = workspaceRow('ws-beta', 'beta', '/projects/beta')
 
 const EMPTY: AgentTeamLlmSettings = {
   enabled: false, allowedRoutes: [], roleRoutes: [], defaultProvider: '', defaultModel: '',
@@ -43,27 +46,24 @@ function acceptWrites<T>(host: ReturnType<typeof stubConfigForm<T>>): void {
 }
 
 /** Workspace documents scripted over one stored document. */
-function documents(document?: AgentTeamLlmTeamDocument, candidates: WorkspaceSessionCandidate[] = []) {
-  const readTeamDocument = vi.fn(() => Promise.resolve({
+function documents(document?: AgentTeamLlmTeamDocument) {
+  const readTeamDocument = vi.fn<AgentTeamLlmTeamDocuments['readTeamDocument']>(() => Promise.resolve({
     ok: true as const,
     value: { path: '/project/.dsh/team.json', document: document ?? null },
   }))
-  const saveTeamDocument = vi.fn(() => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } }))
-  const listWorkspaceCandidates = vi.fn(() => Promise.resolve({
-    ok: true as const,
-    value: candidates,
-  }))
+  const saveTeamDocument = vi.fn<AgentTeamLlmTeamDocuments['saveTeamDocument']>(
+    () => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json' } }),
+  )
   const listMemberPermissionPresets = vi.fn(() => Promise.resolve({
     ok: true as const,
     value: { presets: [], custom: { name: 'custom', label: 'custom' } },
   }))
   return {
     slice: {
-      readTeamDocument, saveTeamDocument, listWorkspaceCandidates, listMemberPermissionPresets,
+      readTeamDocument, saveTeamDocument, listMemberPermissionPresets,
     } satisfies AgentTeamLlmTeamDocuments,
     readTeamDocument,
     saveTeamDocument,
-    listWorkspaceCandidates,
     listMemberPermissionPresets,
   }
 }
@@ -72,6 +72,8 @@ interface Options {
   value?: Partial<AgentTeamLlmSettings>
   document?: AgentTeamLlmTeamDocument
   session?: SessionId | undefined
+  /** The sidebar projection; the default lists alpha and beta, alpha accounting for {@link SESSION}. */
+  workspaces?: ScriptedWorkspaces
 }
 
 /** A ready section, a live catalog, the workspace Remote, and the controller. */
@@ -82,18 +84,29 @@ function bench(options: Options = {}) {
     remote: { session: { modelCatalog: () => Promise.resolve({ ok: true as const, value: { groups: ALPHA, failures: [] } }) } },
   }
   const remote = documents(options.document)
+  const workspaces = options.workspaces ?? workspaceSource([SIDEBAR_ALPHA, SIDEBAR_BETA])
   const controller = new AgentTeamLlmCardController(
     host.scope, catalog as never, remote.slice, () => ('session' in options ? options.session : SESSION),
+    workspaces,
   )
   const face = controller.inject()
   const state = () => face.hooks.agentTeamLlmCard.getSnapshot()
-  return { host, remote, controller, face, state }
+  return { host, remote, workspaces, controller, face, state }
 }
 
 /** Wait until the directory has loaded, so actions that read it are settled. */
 async function ready(state: () => AgentTeamLlmCardState): Promise<void> {
   await vi.waitFor(() => { expect(state().catalogStatus).toBe('ready') })
 }
+
+/** A Remote answer the spec settles by hand. */
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((settle) => { resolve = settle })
+  return { promise, resolve }
+}
+
+type ReadAnswer = Awaited<ReturnType<AgentTeamLlmTeamDocuments['readTeamDocument']>>
 
 describe('allowed route create and delete', () => {
   it('authorizes a hand-filled route the catalog does not advertise', async () => {
@@ -387,7 +400,9 @@ describe('hand-filled member routes', () => {
     const catalog = {
       remote: { session: { modelCatalog: () => Promise.resolve({ ok: true as const, value: { groups: ALPHA, failures: [] } }) } },
     }
-    const controller = new AgentTeamLlmCardController(host.scope, catalog as never, documents().slice, () => SESSION)
+    const controller = new AgentTeamLlmCardController(
+      host.scope, catalog as never, documents().slice, () => SESSION, workspaceSource([SIDEBAR_ALPHA]),
+    )
     const face = controller.inject()
     const state = () => face.hooks.agentTeamLlmCard.getSnapshot()
     await ready(state)
@@ -401,28 +416,64 @@ describe('hand-filled member routes', () => {
     expect(state().dirty).toBe(false)
   })
 
-  it('drops a workspace save whose session went away after the read', async () => {
-    let session: SessionId | undefined = SESSION
+  it('drops the staged workspace rows when the sidebar removes the Workspace', async () => {
     const host = stubConfigForm<AgentTeamLlmSettings>()
     host.publish({ status: 'ready', writable: true, revision: 1, value: { ...EMPTY, enabled: true, allowedRoutes: [{ provider: 'alpha', model: 'fast' }] }, user: {} })
     const catalog = {
       remote: { session: { modelCatalog: () => Promise.resolve({ ok: true as const, value: { groups: ALPHA, failures: [] } }) } },
     }
     const remote = documents({ version: 1, enabled: false })
-    const controller = new AgentTeamLlmCardController(host.scope, catalog as never, remote.slice, () => session)
+    const workspaces = workspaceSource([SIDEBAR_ALPHA, SIDEBAR_BETA])
+    const controller = new AgentTeamLlmCardController(host.scope, catalog as never, remote.slice, () => SESSION, workspaces)
+    const face = controller.inject()
+    const state = () => face.hooks.agentTeamLlmCard.getSnapshot()
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
+    face.setScope('workspace')
+    face.addMember()
+    expect(state().dirty).toBe(true)
+
+    // The sidebar drops the row the layer was resolved from, so the remaining
+    // Workspace takes over and the rows staged against the old file go with it.
+    workspaces.set([SIDEBAR_BETA])
+    workspaces.notify()
+
+    await vi.waitFor(() => { expect(state().workspace.workspaceId).toBe(SIDEBAR_BETA.workspaceId) })
+    expect(remote.saveTeamDocument).not.toHaveBeenCalled()
+    expect(state().dirty).toBe(false)
+    // The staged row left with the draft; the remaining project stores none.
+    expect(state().members).toEqual([])
+  })
+
+  it('refuses a workspace save while the layer is being read again', async () => {
+    const host = stubConfigForm<AgentTeamLlmSettings>()
+    host.publish({ status: 'ready', writable: true, revision: 1, value: { ...EMPTY, enabled: true, allowedRoutes: [{ provider: 'alpha', model: 'fast' }] }, user: {} })
+    const catalog = {
+      remote: { session: { modelCatalog: () => Promise.resolve({ ok: true as const, value: { groups: ALPHA, failures: [] } }) } },
+    }
+    const remote = documents({ version: 1, enabled: false })
+    const controller = new AgentTeamLlmCardController(
+      host.scope, catalog as never, remote.slice, () => SESSION, workspaceSource([SIDEBAR_ALPHA]),
+    )
     const face = controller.inject()
     const state = () => face.hooks.agentTeamLlmCard.getSnapshot()
     await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
 
-    // The layer was readable, then the session that backed it went away.
-    session = undefined
     face.setScope('workspace')
     face.toggleEnabled()
-    face.save()
+    expect(state().dirty).toBe(true)
 
+    // The row the save would name is still known, but the re-read crossing the
+    // wire owns the layer until it answers.
+    const read = deferred<ReadAnswer>()
+    remote.readTeamDocument.mockReturnValue(read.promise)
+    face.retryWorkspace()
+    expect(state().workspace.status).toBe('loading')
+    face.save()
     await Promise.resolve()
     expect(remote.saveTeamDocument).not.toHaveBeenCalled()
-    expect(state().saving).toBe(false)
+
+    read.resolve({ ok: true, value: { path: '/project/.dsh/team.json', document: { version: 1 } } })
+    await vi.waitFor(() => { expect(state().workspace.status).toBe('ready') })
   })
 
   it('ignores a workspace save that settles after the connection moved on', async () => {
@@ -440,12 +491,12 @@ describe('hand-filled member routes', () => {
       {
         readTeamDocument: () => Promise.resolve({ ok: true as const, value: { path: '/project/.dsh/team.json', document: { version: 1 as const, enabled: false } } }),
         saveTeamDocument,
-        listWorkspaceCandidates: () => Promise.resolve({ ok: true as const, value: [] }),
         listMemberPermissionPresets: () => Promise.resolve({
           ok: true as const, value: { presets: [], custom: { name: 'custom', label: 'custom' } },
         }),
       },
       () => SESSION,
+      workspaceSource([SIDEBAR_ALPHA]),
     )
     const face = controller.inject()
     const state = () => face.hooks.agentTeamLlmCard.getSnapshot()
@@ -503,7 +554,7 @@ describe('workspace document scope', () => {
     face.save()
 
     await vi.waitFor(() => { expect(remote.saveTeamDocument).toHaveBeenCalledOnce() })
-    expect(remote.saveTeamDocument).toHaveBeenCalledWith(SESSION, {
+    expect(remote.saveTeamDocument).toHaveBeenCalledWith(SIDEBAR_ALPHA.workspaceId, {
       version: 1,
       members: [{
         name: 'recon',
@@ -528,23 +579,24 @@ describe('workspace document scope', () => {
     face.save()
 
     await vi.waitFor(() => { expect(remote.saveTeamDocument).toHaveBeenCalledOnce() })
-    expect(remote.saveTeamDocument).toHaveBeenCalledWith(SESSION, {
+    expect(remote.saveTeamDocument).toHaveBeenCalledWith(SIDEBAR_ALPHA.workspaceId, {
       version: 1,
       roleRoutes: [{ name: 'scout', provider: 'alpha', model: 'fast' }],
     }, expect.any(AbortSignal))
   })
 
-  it('refuses to write while no session project is open', async () => {
+  it('refuses to write while the sidebar lists no Workspace', async () => {
     const { remote, face, state } = bench({
       value: { enabled: true, allowedRoutes: [{ provider: 'alpha', model: 'fast' }] },
       document: { version: 1, enabled: false },
-      session: undefined,
+      workspaces: workspaceSource([]),
     })
     await vi.waitFor(() => { expect(state().workspace.status).toBe('unavailable') })
 
     face.setScope('workspace')
 
     expect(state().scope).toBe('global')
+    expect(state().workspace.reason).toBe('noWorkspace')
     expect(remote.saveTeamDocument).not.toHaveBeenCalled()
   })
 })

@@ -43,10 +43,10 @@ export type AgentTeamLlmSettingsLocaleKey =
   | 'agentTeamLlmConflict'
   | 'agentTeamLlmScopeLabel' | 'agentTeamLlmScopeGlobal' | 'agentTeamLlmScopeWorkspace'
   | 'agentTeamLlmWorkspaceLoading' | 'agentTeamLlmWorkspaceUnavailable'
-  | 'agentTeamLlmWorkspaceNoSession' | 'agentTeamLlmWorkspaceNoProjectRoot'
+  | 'agentTeamLlmWorkspaceNoWorkspace' | 'agentTeamLlmWorkspaceNoProjectRoot'
   | 'agentTeamLlmWorkspaceLoadFailed' | 'agentTeamLlmWorkspaceSaveFailed'
   | 'agentTeamLlmWorkspaceRetry' | 'agentTeamLlmWorkspacePath'
-  | 'agentTeamLlmWorkspaceSession'
+  | 'agentTeamLlmWorkspacePicker' | 'agentTeamLlmWorkspaceDefault'
   | 'agentTeamLlmMembers' | 'agentTeamLlmMembersEmpty'
   | 'agentTeamLlmMemberName' | 'agentTeamLlmMemberNamePlaceholder'
   | 'agentTeamLlmMemberDescription' | 'agentTeamLlmMemberDescriptionPlaceholder'
@@ -108,14 +108,15 @@ export const en: Record<AgentTeamLlmSettingsLocaleKey, string> = {
   agentTeamLlmScopeGlobal: 'Global',
   agentTeamLlmScopeWorkspace: 'Workspace',
   agentTeamLlmWorkspaceLoading: 'Looking for this project\'s team document…',
-  agentTeamLlmWorkspaceUnavailable: 'This session has no project root, so it has no workspace team document to edit.',
-  agentTeamLlmWorkspaceNoSession: 'No session is open, so there is no project root to resolve a workspace team document from.',
-  agentTeamLlmWorkspaceNoProjectRoot: 'The open session belongs to no project, so it has no workspace team document to edit.',
+  agentTeamLlmWorkspaceUnavailable: 'This workspace has no project root, so it has no workspace team document to edit.',
+  agentTeamLlmWorkspaceNoWorkspace: 'The sidebar lists no workspace yet, so there is no workspace team document to edit.',
+  agentTeamLlmWorkspaceNoProjectRoot: 'This workspace belongs to no project, so it has no workspace team document to edit.',
   agentTeamLlmWorkspaceLoadFailed: 'The team document could not be read.',
   agentTeamLlmWorkspaceSaveFailed: 'The team document was not saved.',
   agentTeamLlmWorkspaceRetry: 'Retry',
   agentTeamLlmWorkspacePath: 'Team document',
-  agentTeamLlmWorkspaceSession: 'Project',
+  agentTeamLlmWorkspacePicker: 'Choose a workspace',
+  agentTeamLlmWorkspaceDefault: 'Default workspace',
   agentTeamLlmMembers: 'Team members',
   agentTeamLlmMembersEmpty: 'No members. Teammates use the routes above.',
   agentTeamLlmMemberName: 'Member name',
@@ -197,15 +198,16 @@ export const zh: Record<AgentTeamLlmSettingsLocaleKey, string> = {
   agentTeamLlmScopeLabel: '设置作用域',
   agentTeamLlmScopeGlobal: '全局',
   agentTeamLlmScopeWorkspace: '工作区',
-  agentTeamLlmWorkspaceLoading: '正在查找本项目的团队文档…',
-  agentTeamLlmWorkspaceUnavailable: '当前会话没有项目根，因此没有可编辑的工作区团队文档。',
-  agentTeamLlmWorkspaceNoSession: '当前没有打开的会话，因此无法解析出项目根来定位工作区团队文档。',
-  agentTeamLlmWorkspaceNoProjectRoot: '当前会话不属于任何项目，因此没有可编辑的工作区团队文档。',
+  agentTeamLlmWorkspaceLoading: '正在查找本工作区的团队文档…',
+  agentTeamLlmWorkspaceUnavailable: '当前工作区没有项目根，因此没有可编辑的工作区团队文档。',
+  agentTeamLlmWorkspaceNoWorkspace: '侧边栏还没有任何工作区，因此没有可编辑的工作区团队文档。',
+  agentTeamLlmWorkspaceNoProjectRoot: '当前工作区不属于任何项目，因此没有可编辑的工作区团队文档。',
   agentTeamLlmWorkspaceLoadFailed: '无法读取团队文档。',
   agentTeamLlmWorkspaceSaveFailed: '团队文档没有被保存。',
   agentTeamLlmWorkspaceRetry: '重试',
   agentTeamLlmWorkspacePath: '团队文档',
-  agentTeamLlmWorkspaceSession: '项目',
+  agentTeamLlmWorkspacePicker: '选择工作区',
+  agentTeamLlmWorkspaceDefault: '默认工作区',
   agentTeamLlmMembers: '团队成员',
   agentTeamLlmMembersEmpty: '没有成员。队友使用上方的路由。',
   agentTeamLlmMemberName: '成员名称',
